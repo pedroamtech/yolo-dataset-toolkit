@@ -55,6 +55,10 @@ dataset/
     labels/   ← YOLO .txt files (one per image, "class cx cy w h" normalized)
 ```
 
+## Related projects
+
+- [uav-auto-labeler](https://github.com/pedroamtech/uav-auto-labeler) — semi-automatic pre-labeling tool that runs a YOLOv8 model fine-tuned on VisDrone over a folder of images and generates YOLO-format labels. A natural first step before cleaning/validating with this toolkit.
+
 ## License
 
 MIT
