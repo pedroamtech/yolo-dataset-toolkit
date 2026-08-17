@@ -11,17 +11,14 @@ label line held a class id >= N (or negative), which only blew up once
 mosaic augmentation combined it into that specific batch.
 
 Usage:
-    Edit _ROOT / _NUM_CLASSES below, then just run the file (IDE Run button
-    or `python tools/validate_labels.py` — no arguments needed).
+    python tools/validate_labels.py path/to/dataset --num-classes 2
+    python tools/validate_labels.py path/to/dataset --num-classes 2 --report out.csv
+    python tools/validate_labels.py path/to/dataset --num-classes 2 --no-report
 """
 
-from pathlib import Path
+import argparse
 import csv
-
-# ── Edit these before running ─────────────────────────────────────────────────
-_ROOT = Path("C:/Users/pedroam/Documents/Data-Augmentation/Datasets-Clean/VisDrone")
-_NUM_CLASSES = 2
-_REPORT = Path("bad_labels.csv")  # set to None to skip writing a CSV report
+from pathlib import Path
 
 
 def find_label_dirs(root: Path) -> list[Path]:
@@ -117,13 +114,24 @@ def check_orphans(labels_dir: Path) -> list[dict]:
 
 
 def main():
-    root = _ROOT
-    num_classes = _NUM_CLASSES
-    report = _REPORT
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("dataset", type=Path,
+                   help="Dataset root — scans every 'labels' folder found under it.")
+    p.add_argument("--num-classes", type=int, required=True,
+                   help="Number of classes; class ids must fall in [0, num_classes-1].")
+    p.add_argument("--report", type=Path, default=Path("bad_labels.csv"),
+                   help="Where to write the CSV issue report (default: bad_labels.csv).")
+    p.add_argument("--no-report", action="store_true",
+                   help="Skip writing the CSV report.")
+    args = p.parse_args()
+
+    root = args.dataset
+    num_classes = args.num_classes
+    report = None if args.no_report else args.report
 
     if not root.exists():
         print(f"[ERROR] path not found: {root}")
-        print("        Edit _ROOT at the top of this script.")
         return
 
     label_dirs = [d for d in find_label_dirs(root) if d.is_dir()]

@@ -29,10 +29,6 @@ from scipy.stats import lognorm
 
 warnings.filterwarnings("ignore")
 
-# ── Project paths (edit if they change) ──────────────────────────────────────
-_LABELS_DIR = Path("C:/Users/pedroam/Documents/Data-Augmentation/Datasets/VisDrone/train/labels")
-_IMAGES_DIR = Path("C:/Users/pedroam/Documents/Data-Augmentation/Datasets/VisDrone/train/images")
-
 # ── Color palette ─────────────────────────────────────────────────────────────
 _C = {
     "hist":   "#4C72B0",   # histogram
@@ -420,9 +416,9 @@ def _parse_args():
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--labels",  type=Path, default=None,
                    help="Path to the YOLO labels folder (.txt). "
-                        "If omitted, _LABELS_DIR/_IMAGES_DIR from the script are used.")
+                        "If omitted, a synthetic dataset is analyzed instead.")
     p.add_argument("--images",  type=Path, default=None,
-                   help="Path to the corresponding images folder.")
+                   help="Path to the corresponding images folder. Required with --labels.")
     p.add_argument("--save",    action="store_true",
                    help="Save the figure as PNG in the current directory")
     return p.parse_args()
@@ -431,22 +427,24 @@ def _parse_args():
 if __name__ == "__main__":
     args = _parse_args()
 
-    # CLI flags take priority; if not provided, the script variables are used.
-    labels_dir = args.labels or _LABELS_DIR
-    images_dir = args.images or _IMAGES_DIR
-
-    if not labels_dir.exists():
-        print(f"[ERROR] Labels folder not found: {labels_dir}")
-        print(        "        Edit _LABELS_DIR in the script or pass --labels <path>")
+    if args.labels and not args.images:
+        print("[ERROR] --images is required when --labels is given")
         raise SystemExit(1)
 
-    if not images_dir.exists():
-        print(f"[ERROR] Images folder not found: {images_dir}")
-        print(        "        Edit _IMAGES_DIR in the script or pass --images <path>")
-        raise SystemExit(1)
+    if args.labels:
+        if not args.labels.exists():
+            print(f"[ERROR] Labels folder not found: {args.labels}")
+            raise SystemExit(1)
+        if not args.images.exists():
+            print(f"[ERROR] Images folder not found: {args.images}")
+            raise SystemExit(1)
 
-    dataset_name = labels_dir.parent.parent.name  # <dataset>/train/labels → <dataset>
-    df = compute_sizes(load_yolo_labels(labels_dir, images_dir))
+        dataset_name = args.labels.parent.parent.name  # <dataset>/train/labels → <dataset>
+        df = compute_sizes(load_yolo_labels(args.labels, args.images))
+    else:
+        dataset_name = "Synthetic"
+        df = compute_sizes(create_synthetic_dataset())
+
     print_stats(df, dataset_name)
     plot_size_distributions(
         df, label=dataset_name,

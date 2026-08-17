@@ -12,14 +12,16 @@ internal `tools/` folder.
 | Script | Purpose |
 |---|---|
 | `tools/clean_dataset.py` | Removes images with no person (class 0) annotations. Rejected files are moved to `_removed/` (or deleted with `--delete`). |
-| `tools/clean_labels.py` | Interactive bounding-box editor (OpenCV GUI) — zoom, pan, draw, select/delete boxes, save. |
-| `tools/visualize_labels.py` | Interactive YOLO label viewer — draws boxes per class and lets you page through a dataset. |
 | `tools/validate_labels.py` | Scans label files for issues that can crash training: out-of-range classes, malformed rows, NaN/out-of-bounds coordinates, orphan files. Writes a CSV report. |
 | `tools/normalize_manipal_labels.py` | Clamps YOLO-normalized coordinates into `[0, 1]` and drops degenerate (zero-area) boxes. |
-| `tools/yolo_person_labeler.py` | Semi-automatic labeler — HOG person detector for auto-suggestions plus manual box drawing/editing. |
-| `tools/analyze_size_distribution.py` | Object size distribution analysis (Absolute/Relative Size, log-normal fit, CCDF heavy-tail diagnostic) following the TinyPerson Benchmark methodology (Yu et al., 2019). |
+| `tools/yolo_person_labeler.py` | All-in-one labeling/editing/viewing tool — HOG auto-detection, manual box drawing, zoom/pan, click-to-select-and-delete, per-class color rendering. |
+| `tools/analyze_size_distribution.py` | Object size distribution analysis (Absolute/Relative Size, log-normal fit, CCDF heavy-tail diagnostic) following the TinyPerson Benchmark methodology (Yu et al., 2019). Runs on synthetic data if no `--labels`/`--images` are given. |
 | `tools/rename_images.py` | Batch-renames images in a folder with a fixed prefix. |
 | `tools/video_to_frames.py` | Extracts every frame from all videos in a folder into per-video subfolders. |
+
+`clean_labels.py` and `visualize_labels.py` were merged into
+`yolo_person_labeler.py` (zoom/pan box editing + per-class color rendering
+now live there) and are kept only as deprecated stubs pointing to it.
 
 ## Installation
 
@@ -33,19 +35,29 @@ Windows/macOS; on Linux install it via your package manager
 
 ## Usage
 
-Most scripts accept a dataset path as a CLI argument, or fall back to a
-folder-picker dialog when run with no arguments:
+### Interactive launcher
+
+```bash
+python main.py
+```
+
+Shows a numbered menu of tasks; pick one and it prompts for whatever that
+tool needs (dataset path, number of classes, etc.) before running it.
+
+### Direct script / non-interactive
+
+Every script accepts its path as a CLI argument, or falls back to a
+folder-picker dialog when run with no arguments. `main.py` also accepts a
+tool id followed by args passed straight through, for scripting:
 
 ```bash
 python tools/clean_dataset.py path/to/dataset
-python tools/visualize_labels.py path/to/dataset
 python tools/video_to_frames.py path/to/videos
+python main.py validate_labels path/to/dataset --num-classes 2
+python main.py --list   # show all tool ids
 ```
 
-A few scripts (`clean_labels.py`, `normalize_manipal_labels.py`,
-`rename_images.py`, `validate_labels.py`) configure their input paths via
-constants at the top of the file — edit those before running. See each
-script's module docstring for exact usage and keyboard controls.
+See each script's module docstring for exact usage and keyboard controls.
 
 ## Expected dataset layout
 
