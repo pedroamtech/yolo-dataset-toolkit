@@ -4,7 +4,7 @@ Standalone utilities for preparing, cleaning, validating, and inspecting
 YOLO-format object detection datasets (aerial/UAV person-detection focused,
 but generic to any single- or multi-class YOLO dataset).
 
-Extracted from the [Auto-DA](https://github.com/pedroamtech/Auto-DA) project's
+Extracted from the [aerial-person-aug](https://github.com/pedroamtech/aerial-person-aug) project's
 internal `tools/` folder.
 
 ## Tools
