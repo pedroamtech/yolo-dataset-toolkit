@@ -1,4 +1,4 @@
-# YOLO Dataset Toolkit
+# YOLO Dataset Toolkit: Cleaning, Validation, and Size-Distribution Analysis for YOLO Datasets
 
 Standalone utilities for preparing, cleaning, validating, and inspecting
 YOLO-format object detection datasets (aerial/UAV person-detection focused,
@@ -57,7 +57,7 @@ dataset/
 
 ## Related projects
 
-- [uav-auto-labeler](https://github.com/pedroamtech/uav-auto-labeler) — semi-automatic pre-labeling tool that runs a YOLOv8 model fine-tuned on VisDrone over a folder of images and generates YOLO-format labels. A natural first step before cleaning/validating with this toolkit.
+- [UAV Auto Labeler](https://github.com/pedroamtech/uav-auto-labeler) — semi-automatic pre-labeling tool that runs a YOLOv8 model fine-tuned on VisDrone over a folder of images and generates YOLO-format labels. A natural first step before cleaning/validating with this toolkit.
 
 ## License
 
