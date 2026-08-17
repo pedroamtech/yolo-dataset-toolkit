@@ -27,54 +27,54 @@ TOOLS_DIR = Path(__file__).parent / "tools"
 TOOLS = [
     {
         "id": "clean_dataset",
-        "title": "Limpiar dataset — elimina imágenes sin anotaciones de persona (clase 0)",
+        "title": "Clean dataset — removes images with no person (class 0) annotations",
         "script": "clean_dataset.py",
         "kind": "dataset_dir",
-        "path_prompt": "Carpeta del dataset (contiene images/ y labels/)",
+        "path_prompt": "Dataset folder (contains images/ and labels/)",
         "ask_delete": True,
     },
     {
         "id": "validate_labels",
-        "title": "Validar etiquetas — detecta clases fuera de rango, filas mal formadas, "
-                 "coordenadas NaN/fuera de límites y archivos huérfanos",
+        "title": "Validate labels — flags out-of-range classes, malformed rows, "
+                 "NaN/out-of-bounds coordinates and orphan files",
         "script": "validate_labels.py",
         "kind": "dataset_dir",
-        "path_prompt": "Carpeta raíz del dataset (se buscan subcarpetas 'labels/')",
+        "path_prompt": "Dataset root folder (searches for 'labels/' subfolders)",
         "ask_num_classes": True,
     },
     {
         "id": "normalize_labels",
-        "title": "Normalizar etiquetas — recorta coordenadas YOLO a [0,1] y descarta cajas de área cero",
+        "title": "Normalize labels — clamps YOLO coordinates to [0,1] and drops zero-area boxes",
         "script": "normalize_manipal_labels.py",
         "kind": "dataset_dir",
-        "path_prompt": "Carpeta raíz del dataset (con subcarpetas train/val/test)",
+        "path_prompt": "Dataset root folder (with train/val/test subfolders)",
     },
     {
         "id": "yolo_person_labeler",
-        "title": "Etiquetar/editar personas — detección automática (HOG) + edición manual "
-                 "con zoom/pan y colores por clase",
+        "title": "Label/edit persons — HOG auto-detection + manual editing "
+                 "with zoom/pan and per-class colors",
         "script": "yolo_person_labeler.py",
         "kind": "dataset_dir",
-        "path_prompt": "Carpeta del dataset (contiene images/ y labels/)",
+        "path_prompt": "Dataset folder (contains images/ and labels/)",
     },
     {
         "id": "rename_images",
-        "title": "Renombrar imágenes — antepone un prefijo fijo a todas las imágenes de una carpeta",
+        "title": "Rename images — prepends a fixed prefix to every image in a folder",
         "script": "rename_images.py",
         "kind": "images_dir",
-        "path_prompt": "Carpeta de imágenes",
+        "path_prompt": "Images folder",
         "ask_prefix": True,
     },
     {
         "id": "video_to_frames",
-        "title": "Extraer frames — convierte cada vídeo de una carpeta en una subcarpeta de frames",
+        "title": "Extract frames — turns each video in a folder into a frames subfolder",
         "script": "video_to_frames.py",
         "kind": "images_dir",
-        "path_prompt": "Carpeta que contiene los vídeos",
+        "path_prompt": "Folder containing the videos",
     },
     {
         "id": "analyze_size_distribution",
-        "title": "Analizar tamaños — distribución de tamaño de objetos (AS/RS, ajuste log-normal, CCDF)",
+        "title": "Analyze object sizes — AS/RS size distribution, log-normal fit, CCDF",
         "script": "analyze_size_distribution.py",
         "kind": "labels_images",
     },
@@ -95,10 +95,10 @@ def find_tool(token: str):
 
 
 def print_menu():
-    print("\nYOLO Dataset Toolkit — selecciona una tarea:\n")
+    print("\nYOLO Dataset Toolkit — select a task:\n")
     for i, tool in enumerate(TOOLS, start=1):
         print(f"  {i}. [{tool['id']}]  {tool['title']}")
-    print("  0. Salir\n")
+    print("  0. Exit\n")
 
 
 def run_tool(tool: dict, extra_args: list) -> int:
@@ -109,7 +109,7 @@ def run_tool(tool: dict, extra_args: list) -> int:
 
 
 def prompt_path(prompt: str, allow_empty: bool = True) -> str:
-    suffix = " (Enter para diálogo de selección)" if allow_empty else ""
+    suffix = " (Enter for a folder-picker dialog)" if allow_empty else ""
     value = input(f"{prompt}{suffix}: ").strip().strip('"')
     return value
 
@@ -123,36 +123,36 @@ def interactive_run(tool: dict) -> int:
             args.append(path)
 
         if tool.get("ask_delete"):
-            ans = input("¿Eliminar permanentemente en vez de mover a _removed/? [y/N]: ").strip().lower()
-            if ans in ("y", "yes", "s", "si", "sí"):
+            ans = input("Permanently delete instead of moving to _removed/? [y/N]: ").strip().lower()
+            if ans in ("y", "yes"):
                 args.append("--delete")
 
         if tool.get("ask_num_classes"):
             if not path:
-                print("[ERROR] validate_labels necesita una ruta de dataset (no soporta diálogo).")
+                print("[ERROR] validate_labels needs a dataset path (no dialog fallback).")
                 return 1
             while True:
-                n = input("Número de clases del dataset: ").strip()
+                n = input("Number of classes in the dataset: ").strip()
                 if n.isdigit():
                     args += ["--num-classes", n]
                     break
-                print("  Ingresa un entero válido.")
+                print("  Enter a valid integer.")
 
         if tool.get("ask_prefix"):
-            prefix = input("Prefijo a anteponer (Enter para ninguno): ").strip()
+            prefix = input("Prefix to prepend (Enter for none): ").strip()
             if prefix:
                 args += ["--prefix", prefix]
 
     elif tool["kind"] == "labels_images":
-        labels = prompt_path("Carpeta de labels YOLO (.txt)")
+        labels = prompt_path("YOLO labels folder (.txt)")
         if labels:
-            images = prompt_path("Carpeta de imágenes correspondiente", allow_empty=False)
+            images = prompt_path("Corresponding images folder", allow_empty=False)
             if not images:
-                print("[ERROR] analyze_size_distribution necesita --images junto con --labels.")
+                print("[ERROR] analyze_size_distribution needs --images together with --labels.")
                 return 1
             args += ["--labels", labels, "--images", images]
-        ans = input("¿Guardar la figura como PNG? [y/N]: ").strip().lower()
-        if ans in ("y", "yes", "s", "si", "sí"):
+        ans = input("Save the figure as PNG? [y/N]: ").strip().lower()
+        if ans in ("y", "yes"):
             args.append("--save")
 
     return run_tool(tool, args)
@@ -164,12 +164,12 @@ def main():
     if not argv:
         while True:
             print_menu()
-            choice = input("Selección: ").strip()
+            choice = input("Selection: ").strip()
             if choice in ("0", "q", "quit", "exit"):
                 return
             tool = find_tool(choice)
             if not tool:
-                print(f"Opción inválida: '{choice}'")
+                print(f"Invalid option: '{choice}'")
                 continue
             interactive_run(tool)
         return
@@ -185,8 +185,8 @@ def main():
 
     tool = find_tool(argv[0])
     if not tool:
-        print(f"Herramienta desconocida: '{argv[0]}'")
-        print("Usa 'python main.py --list' para ver las opciones disponibles.")
+        print(f"Unknown tool: '{argv[0]}'")
+        print("Run 'python main.py --list' to see the available options.")
         raise SystemExit(1)
 
     raise SystemExit(run_tool(tool, argv[1:]))
