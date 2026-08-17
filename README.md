@@ -21,7 +21,7 @@ internal `tools/` folder.
 
 `clean_labels.py` and `visualize_labels.py` were merged into
 `yolo_person_labeler.py` (zoom/pan box editing + per-class color rendering
-now live there) and are kept only as deprecated stubs pointing to it.
+now live there) and have been removed.
 
 ## Installation
 
