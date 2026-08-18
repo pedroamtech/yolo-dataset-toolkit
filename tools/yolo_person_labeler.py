@@ -6,6 +6,14 @@ All-in-one labeling tool. Merges what used to be three separate scripts:
     - Zoom/pan viewport + click-to-select-box deletion (former clean_labels.py)
     - Per-class color-coded box rendering (former visualize_labels.py)
 
+Viewer:
+    Each image opens fit to the window — shrunk to fit if larger (e.g. 8K
+    aerial captures), shown at native resolution if smaller (never upscaled).
+    No zoom is applied beyond that until you scroll or press +/-. The window
+    tracks its real OS size every frame, so resizing or going fullscreen
+    reflows the image instead of stretching it, and switching images keeps
+    whatever window size/state (including fullscreen) you left it in.
+
 Controls:
   Mouse
     Scroll wheel / trackpad — zoom in / out (centered on cursor)
@@ -40,6 +48,7 @@ from pathlib import Path
 from tkinter import filedialog
 
 import cv2
+import numpy as np
 from tqdm import tqdm
 
 WINDOW_NAME = "YOLO Person Labeler"
@@ -47,7 +56,7 @@ WINDOW_NAME = "YOLO Person Labeler"
 IMAGE_EXTS = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp')
 NEW_CLS = 0   # class written for manually-drawn and auto-detected boxes
 
-WIN_W, WIN_H   = 1280, 720
+MAX_WIN_W, MAX_WIN_H = 1280, 720   # cap on window/viewport size; smaller images are shown at native size
 ZOOM_STEP      = 1.25
 MIN_ZOOM       = 0.2
 MAX_ZOOM       = 12.0
@@ -112,47 +121,61 @@ def batch_auto_detect(images: list[Path], labels_dir: Path) -> int:
 
 
 # ─── Coordinate helpers (zoom/pan viewport) ───────────────────────────────────
-def view_size(zoom, img_w, img_h):
-    return min(img_w, int(WIN_W / zoom)), min(img_h, int(WIN_H / zoom))
+def view_size(zoom, img_w, img_h, win_w, win_h):
+    return min(img_w, int(win_w / zoom)), min(img_h, int(win_h / zoom))
 
 
-def clamp_pan(px, py, zoom, img_w, img_h):
-    vw, vh = view_size(zoom, img_w, img_h)
+def clamp_pan(px, py, zoom, img_w, img_h, win_w, win_h):
+    vw, vh = view_size(zoom, img_w, img_h, win_w, win_h)
     return max(0, min(img_w - vw, px)), max(0, min(img_h - vh, py))
 
 
 def s2i(sx, sy, state):
     """Screen (window) coords → image (pixel) coords."""
-    vw, vh = view_size(state["zoom"], state["iw"], state["ih"])
-    return (int(sx / WIN_W * vw + state["px"]),
-            int(sy / WIN_H * vh + state["py"]))
+    ox, oy = state["ox"], state["oy"]
+    return (int((sx - ox) / state["zoom"] + state["px"]),
+            int((sy - oy) / state["zoom"] + state["py"]))
 
 
 def i2s(ix, iy, state):
     """Image (pixel) coords → screen (window) coords."""
-    vw, vh = view_size(state["zoom"], state["iw"], state["ih"])
-    return (int((ix - state["px"]) / vw * WIN_W),
-            int((iy - state["py"]) / vh * WIN_H))
+    ox, oy = state["ox"], state["oy"]
+    return (int((ix - state["px"]) * state["zoom"]) + ox,
+            int((iy - state["py"]) * state["zoom"]) + oy)
 
 
 def do_zoom(state, factor, sx, sy):
-    new_zoom = max(MIN_ZOOM, min(MAX_ZOOM, state["zoom"] * factor))
-    vw,  vh  = view_size(state["zoom"], state["iw"], state["ih"])
-    img_cx   = sx / WIN_W * vw + state["px"]
-    img_cy   = sy / WIN_H * vh + state["py"]
-    nvw, nvh = view_size(new_zoom, state["iw"], state["ih"])
-    state["px"] = int(img_cx - sx / WIN_W * nvw)
-    state["py"] = int(img_cy - sy / WIN_H * nvh)
+    new_zoom = max(state["min_zoom"], min(MAX_ZOOM, state["zoom"] * factor))
+    ox, oy = state["ox"], state["oy"]
+    img_cx = (sx - ox) / state["zoom"] + state["px"]
+    img_cy = (sy - oy) / state["zoom"] + state["py"]
+    state["px"] = int(img_cx - (sx - ox) / new_zoom)
+    state["py"] = int(img_cy - (sy - oy) / new_zoom)
     state["px"], state["py"] = clamp_pan(
-        state["px"], state["py"], new_zoom, state["iw"], state["ih"])
+        state["px"], state["py"], new_zoom, state["iw"], state["ih"], state["ww"], state["wh"])
     state["zoom"] = new_zoom
+    state["user_zoomed"] = True
 
 
 # ─── Render ───────────────────────────────────────────────────────────────────
 def render(img, boxes, selected, state, preview=None):
-    vw, vh = view_size(state["zoom"], state["iw"], state["ih"])
+    ww, wh, zoom = state["ww"], state["wh"], state["zoom"]
+    vw, vh = view_size(zoom, state["iw"], state["ih"], ww, wh)
     crop = img[state["py"]:state["py"] + vh, state["px"]:state["px"] + vw]
-    out  = cv2.resize(crop, (WIN_W, WIN_H), interpolation=cv2.INTER_LINEAR)
+
+    # Draw at the true zoom scale (1.0 = native pixels) — never stretched to fill
+    # the window. Any leftover space (e.g. image smaller than the window, or the
+    # window maximized/fullscreened) is padding, not extra magnification.
+    disp_w = min(ww, max(1, round(vw * zoom)))
+    disp_h = min(wh, max(1, round(vh * zoom)))
+    content = crop if (disp_w, disp_h) == (vw, vh) else cv2.resize(
+        crop, (disp_w, disp_h), interpolation=cv2.INTER_LINEAR)
+
+    ox, oy = (ww - disp_w) // 2, (wh - disp_h) // 2
+    state["ox"], state["oy"] = ox, oy
+
+    out = np.full((wh, ww, 3), 32, dtype=np.uint8)
+    out[oy:oy + disp_h, ox:ox + disp_w] = content
 
     if state["show_boxes"]:
         for i, (cls, x1, y1, x2, y2) in enumerate(boxes):
@@ -167,15 +190,15 @@ def render(img, boxes, selected, state, preview=None):
     if preview:
         cv2.rectangle(out, preview[:2], preview[2:], COLOR_NEW, 2, cv2.LINE_AA)
 
-    cv2.putText(out, f"{state['zoom']:.1f}x", (8, WIN_H - 8),
+    cv2.putText(out, f"{state['zoom']:.1f}x", (8, state["wh"] - 8),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
 
     if state["input_mode"]:
         prompt = f"Go to image (1-{state['n_images']}):  {state['input_text']}_"
         font, scale, thick = cv2.FONT_HERSHEY_SIMPLEX, 0.75, 2
         (tw, th), _ = cv2.getTextSize(prompt, font, scale, thick)
-        bx = WIN_W // 2 - tw // 2 - 16
-        by = WIN_H // 2 - th // 2 - 16
+        bx = state["ww"] // 2 - tw // 2 - 16
+        by = state["wh"] // 2 - th // 2 - 16
         overlay = out.copy()
         cv2.rectangle(overlay, (bx, by), (bx + tw + 32, by + th + 32), (20, 20, 20), -1)
         cv2.addWeighted(overlay, 0.82, out, 0.18, 0, out)
@@ -232,13 +255,12 @@ def make_mouse_cb(state):
             state["pan_off0"] = (state["px"], state["py"])
 
         elif event == cv2.EVENT_MOUSEMOVE and state["panning"]:
-            vw, vh = view_size(state["zoom"], state["iw"], state["ih"])
-            dx = int((state["pan_s0"][0] - x) / WIN_W * vw)
-            dy = int((state["pan_s0"][1] - y) / WIN_H * vh)
+            dx = int((state["pan_s0"][0] - x) / state["zoom"])
+            dy = int((state["pan_s0"][1] - y) / state["zoom"])
             state["px"] = state["pan_off0"][0] + dx
             state["py"] = state["pan_off0"][1] + dy
             state["px"], state["py"] = clamp_pan(
-                state["px"], state["py"], state["zoom"], state["iw"], state["ih"])
+                state["px"], state["py"], state["zoom"], state["iw"], state["ih"], state["ww"], state["wh"])
 
         elif event == cv2.EVENT_RBUTTONUP:
             state["panning"] = False
@@ -310,6 +332,17 @@ def print_controls():
     print(__doc__.split("Controls:\n")[1].split("Usage:")[0].strip())
 
 
+if hasattr(cv2, "getWindowImageRect"):
+    def _get_window_size(window_name):
+        try:
+            _, _, w, h = cv2.getWindowImageRect(window_name)
+            return w, h
+        except Exception:
+            return None, None
+else:
+    _get_window_size = None
+
+
 # ─── Main loop ────────────────────────────────────────────────────────────────
 def main():
     p = argparse.ArgumentParser(
@@ -348,7 +381,8 @@ def main():
     print_controls()
 
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(WINDOW_NAME, WIN_W, WIN_H)
+    window_sized = False   # only set an explicit window size once — afterwards
+                            # keep whatever size the user left it at (including fullscreen)
 
     i = 0
     while i < len(images):
@@ -361,14 +395,30 @@ def main():
             continue
         ih, iw = img.shape[:2]
 
+        if not window_sized:
+            ww, wh = min(iw, MAX_WIN_W), min(ih, MAX_WIN_H)
+            cv2.resizeWindow(WINDOW_NAME, ww, wh)
+            window_sized = True
+        else:
+            cur_w, cur_h = _get_window_size(WINDOW_NAME) if _get_window_size else (None, None)
+            ww, wh = (cur_w, cur_h) if cur_w and cur_h else (min(iw, MAX_WIN_W), min(ih, MAX_WIN_H))
+
+        # Default view: whole image fit inside the window, never upscaled past
+        # native size (1.0). Large (e.g. 8K) images shrink to fit; small images
+        # stay at native resolution — the user has to zoom in/out explicitly.
+        fit_zoom = min(1.0, ww / iw, wh / ih)
+
         state = {
             "boxes":    load_boxes(label_path, iw, ih),
             "selected": set(),
             "iw": iw, "ih": ih,
-            "zoom": 1.0, "px": 0, "py": 0,
+            "ww": ww, "wh": wh,
+            "ox": 0, "oy": 0,
+            "zoom": fit_zoom, "min_zoom": min(MIN_ZOOM, fit_zoom), "px": 0, "py": 0,
+            "user_zoomed": False,
             "down": False, "drag": False, "start": (0, 0), "cur": (0, 0),
             "panning": False, "pan_s0": (0, 0), "pan_off0": (0, 0),
-            "mx": WIN_W // 2, "my": WIN_H // 2,
+            "mx": ww // 2, "my": wh // 2,
             "input_mode": False, "input_text": "",
             "n_images": len(images),
             "show_boxes": True,
@@ -376,6 +426,23 @@ def main():
         cv2.setMouseCallback(WINDOW_NAME, make_mouse_cb(state))
 
         while True:
+            # Re-sync to the OS window's actual pixel size every frame — it can
+            # change from resizing, maximizing, or entering fullscreen, and the
+            # render must track it exactly or OpenCV will stretch (zoom) the frame
+            # to fill it.
+            if _get_window_size is not None:
+                cur_w, cur_h = _get_window_size(WINDOW_NAME)
+                if cur_w and cur_h and (cur_w, cur_h) != (state["ww"], state["wh"]):
+                    state["ww"], state["wh"] = cur_w, cur_h
+                    if not state["user_zoomed"]:
+                        # Still at the default "fit" view — re-fit to the new
+                        # window size instead of leaving stale padding/cropping.
+                        state["zoom"] = min(1.0, cur_w / state["iw"], cur_h / state["ih"])
+                        state["min_zoom"] = min(MIN_ZOOM, state["zoom"])
+                    state["px"], state["py"] = clamp_pan(
+                        state["px"], state["py"], state["zoom"],
+                        state["iw"], state["ih"], state["ww"], state["wh"])
+
             preview = (state["start"][0], state["start"][1],
                        state["cur"][0],   state["cur"][1]) if state["drag"] else None
             frame = render(img, state["boxes"], state["selected"], state, preview)
