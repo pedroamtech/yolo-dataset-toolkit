@@ -34,6 +34,14 @@ TOOLS = [
         "ask_delete": True,
     },
     {
+        "id": "remove_unlabeled_images",
+        "title": "Remove unlabeled images — deletes images with no matching .txt label file",
+        "script": "remove_unlabeled_images.py",
+        "kind": "dataset_dir",
+        "path_prompt": "Dataset folder (contains images/ and labels/)",
+        "ask_delete": True,
+    },
+    {
         "id": "split_dataset",
         "title": "Split dataset — 80/20 train/val split with a reproducible random seed",
         "script": "split_dataset.py",
