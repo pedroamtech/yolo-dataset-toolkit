@@ -34,6 +34,14 @@ TOOLS = [
         "ask_delete": True,
     },
     {
+        "id": "split_dataset",
+        "title": "Split dataset — 80/20 train/val split with a reproducible random seed",
+        "script": "split_dataset.py",
+        "kind": "dataset_dir",
+        "path_prompt": "Dataset folder (contains images/ and labels/)",
+        "ask_split": True,
+    },
+    {
         "id": "validate_labels",
         "title": "Validate labels — flags out-of-range classes, malformed rows, "
                  "NaN/out-of-bounds coordinates and orphan files",
@@ -126,6 +134,19 @@ def interactive_run(tool: dict) -> int:
             ans = input("Permanently delete instead of moving to _removed/? [y/N]: ").strip().lower()
             if ans in ("y", "yes"):
                 args.append("--delete")
+
+        if tool.get("ask_split"):
+            ratio = input("Train ratio [0.8]: ").strip()
+            if ratio:
+                args += ["--ratio", ratio]
+
+            seed = input("Random seed [42]: ").strip()
+            if seed:
+                args += ["--seed", seed]
+
+            ans = input("Move files instead of copying? [y/N]: ").strip().lower()
+            if ans in ("y", "yes"):
+                args.append("--move")
 
         if tool.get("ask_num_classes"):
             if not path:

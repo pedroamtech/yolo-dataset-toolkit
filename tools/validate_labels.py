@@ -22,7 +22,7 @@ from pathlib import Path
 
 
 def find_label_dirs(root: Path) -> list[Path]:
-    """Every folder literally named 'labels' under root (e.g. train/labels, validation/labels)."""
+    """Every folder literally named 'labels' under root (e.g. train/labels, val/labels)."""
     if root.name == "labels":
         return [root]
     return sorted(d for d in root.rglob("labels") if d.is_dir())
