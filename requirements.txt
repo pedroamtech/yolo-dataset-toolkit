@@ -4,5 +4,6 @@ pandas
 matplotlib
 seaborn
 scipy
+scikit-learn
 tqdm
 Pillow

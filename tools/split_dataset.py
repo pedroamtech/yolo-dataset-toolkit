@@ -1,10 +1,11 @@
 """
 tools/split_dataset.py — Split a labeled dataset into train/val
 
-Shuffles the dataset with a fixed random seed (reproducible) and splits it
-by ratio (default 80/20). Each image is copied together with its matching
-YOLO label file, so pairs always stay together. Images without a label file
-are still included in the split (treated as background/negatives).
+Uses sklearn's train_test_split with a fixed random_state (reproducible) to
+split the dataset by ratio (default 80/20). Each image is copied together
+with its matching YOLO label file, so pairs always stay together. Images
+without a label file are still included in the split (treated as
+background/negatives).
 
 Expected dataset structure:
     dataset/
@@ -27,12 +28,13 @@ Usage:
 """
 
 import argparse
-import random
 import shutil
 import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
+
+from sklearn.model_selection import train_test_split
 
 IMAGE_EXTS = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp')
 
@@ -64,11 +66,9 @@ def split_dataset(dataset_dir: Path, ratio: float, seed: int, move: bool):
         print(f"[ERROR] no images found in: {images_dir}")
         sys.exit(1)
 
-    rng = random.Random(seed)
-    rng.shuffle(images)
-
-    split_idx = round(len(images) * ratio)
-    splits = {"train": images[:split_idx], "val": images[split_idx:]}
+    train_images, val_images = train_test_split(
+        images, train_size=ratio, random_state=seed)
+    splits = {"train": train_images, "val": val_images}
 
     n_no_label = 0
     transfer = shutil.move if move else shutil.copy2
