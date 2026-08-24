@@ -4,7 +4,7 @@ tools/remove_unlabeled_images.py — Remove images with no .txt label file
 Unlike clean_dataset.py (which also drops images whose label file exists but
 has no class-0/person row), this only checks whether a matching .txt label
 file exists at all. Images missing a label file are moved to a _removed/
-subfolder by default; use --delete to permanently delete them instead.
+subfolder (never permanently deleted).
 
 Expected dataset structure:
     dataset/
@@ -14,7 +14,6 @@ Expected dataset structure:
 Usage:
     python tools/remove_unlabeled_images.py                        # folder dialog
     python tools/remove_unlabeled_images.py path/to/dataset
-    python tools/remove_unlabeled_images.py path/to/dataset --delete
 """
 
 import argparse
@@ -35,7 +34,7 @@ def pick_folder() -> str:
     return folder
 
 
-def remove_unlabeled(dataset_dir: Path, delete: bool = False):
+def remove_unlabeled(dataset_dir: Path):
     images_dir = dataset_dir / "images"
     labels_dir = dataset_dir / "labels"
 
@@ -47,8 +46,7 @@ def remove_unlabeled(dataset_dir: Path, delete: bool = False):
         sys.exit(1)
 
     removed_images_dir = dataset_dir / "_removed" / "images"
-    if not delete:
-        removed_images_dir.mkdir(parents=True, exist_ok=True)
+    removed_images_dir.mkdir(parents=True, exist_ok=True)
 
     images = sorted(
         p for p in images_dir.iterdir()
@@ -64,15 +62,11 @@ def remove_unlabeled(dataset_dir: Path, delete: bool = False):
             continue
 
         n_removed += 1
-        if delete:
-            img_path.unlink()
-        else:
-            shutil.move(str(img_path), str(removed_images_dir / img_path.name))
+        shutil.move(str(img_path), str(removed_images_dir / img_path.name))
 
-    action = "deleted" if delete else f"moved to {removed_images_dir}"
     print(f"\nDataset : {dataset_dir}")
     print(f"  Kept               : {n_kept}")
-    print(f"  Removed (no label) : {n_removed} ({action})")
+    print(f"  Removed (no label) : {n_removed} (moved to {removed_images_dir})")
 
 
 def main():
@@ -81,8 +75,6 @@ def main():
     p.add_argument("dataset", nargs="?", type=Path, default=None,
                     help="Dataset folder (contains images/ and labels/). "
                          "Falls back to a folder-picker dialog if omitted.")
-    p.add_argument("--delete", action="store_true",
-                    help="Permanently delete instead of moving to _removed/.")
     args = p.parse_args()
 
     if args.dataset:
@@ -98,16 +90,7 @@ def main():
             sys.exit(0)
         dataset_dir = Path(picked)
 
-    if args.delete:
-        confirm = input(
-            "\n[WARNING] --delete mode: files will be permanently deleted.\n"
-            "Continue? [y/N]: "
-        ).strip().lower()
-        if confirm not in ("y", "yes"):
-            print("Cancelled.")
-            sys.exit(0)
-
-    remove_unlabeled(dataset_dir, delete=args.delete)
+    remove_unlabeled(dataset_dir)
 
 
 if __name__ == "__main__":

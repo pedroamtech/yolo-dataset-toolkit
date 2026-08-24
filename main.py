@@ -35,11 +35,10 @@ TOOLS = [
     },
     {
         "id": "remove_unlabeled_images",
-        "title": "Remove unlabeled images — deletes images with no matching .txt label file",
+        "title": "Remove unlabeled images — moves images with no matching .txt label file to _removed/",
         "script": "remove_unlabeled_images.py",
         "kind": "dataset_dir",
         "path_prompt": "Dataset folder (contains images/ and labels/)",
-        "ask_delete": True,
     },
     {
         "id": "split_dataset",
