@@ -12,6 +12,8 @@ internal `tools/` folder.
 | Script | Purpose |
 |---|---|
 | `tools/clean_dataset.py` | Removes images with no person (class 0) annotations. Rejected files are moved to `_removed/` (or deleted with `--delete`). |
+| `tools/remove_unlabeled_images.py` | Moves images with no matching `.txt` label file to `_removed/`. |
+| `tools/split_dataset.py` | 80/20 train/val split with a reproducible random seed (uses `sklearn.train_test_split`). |
 | `tools/validate_labels.py` | Scans label files for issues that can crash training: out-of-range classes, malformed rows, NaN/out-of-bounds coordinates, orphan files. Writes a CSV report. |
 | `tools/normalize_manipal_labels.py` | Clamps YOLO-normalized coordinates into `[0, 1]` and drops degenerate (zero-area) boxes. |
 | `tools/yolo_person_labeler.py` | All-in-one labeling/editing/viewing tool — HOG auto-detection, manual box drawing, zoom/pan, click-to-select-and-delete, per-class color rendering. |
@@ -25,13 +27,35 @@ now live there) and have been removed.
 
 ## Installation
 
+Developed and tested with **Python 3.13** (Anaconda).
+
+Create the Conda environment from `environment.yml` (pins Python 3.13 and
+installs the pip dependencies):
+
 ```bash
-pip install -r requirements.txt
+conda env create -f environment.yml
+conda activate yolo-toolkit
 ```
 
-`tkinter` (used for folder-picker dialogs) ships with standard CPython on
-Windows/macOS; on Linux install it via your package manager
-(e.g. `sudo apt install python3-tk`).
+Or set it up manually:
+
+```bash
+conda create -n yolo-toolkit python=3.13
+conda activate yolo-toolkit
+pip install -r requirements.txt      # major-version-capped ranges
+# or, for an exact reproducible environment:
+pip install -r requirements.lock     # fully pinned versions
+```
+
+Regenerate the lock file after changing `requirements.txt`:
+
+```bash
+pip install -r requirements.txt && pip freeze > requirements.lock
+```
+
+`tkinter` (used for folder-picker dialogs) ships with standard CPython and
+with Anaconda on Windows/macOS; on Linux install it via your package
+manager (e.g. `sudo apt install python3-tk`).
 
 ## Usage
 
