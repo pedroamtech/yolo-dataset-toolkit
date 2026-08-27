@@ -20,6 +20,7 @@ internal `tools/` folder.
 | `tools/analyze_size_distribution.py` | Object size distribution analysis (Absolute/Relative Size, log-normal fit, CCDF heavy-tail diagnostic) following the TinyPerson Benchmark methodology (Yu et al., 2019). Runs on synthetic data if no `--labels`/`--images` are given. |
 | `tools/rename_images.py` | Batch-renames images in a folder with a fixed prefix. |
 | `tools/video_to_frames.py` | Extracts every frame from all videos in a folder into per-video subfolders. |
+| `tools/remove_mac_metadata.py` | Recursively deletes macOS junk files (`.DS_Store` and `._*` AppleDouble sidecars). Supports `--dry-run`. |
 
 `clean_labels.py` and `visualize_labels.py` were merged into
 `yolo_person_labeler.py` (zoom/pan box editing + per-class color rendering

@@ -81,6 +81,14 @@ TOOLS = [
         "ask_prefix": True,
     },
     {
+        "id": "remove_mac_metadata",
+        "title": "Remove macOS metadata — recursively deletes .DS_Store and ._* files",
+        "script": "remove_mac_metadata.py",
+        "kind": "images_dir",
+        "path_prompt": "Folder to scan recursively",
+        "ask_dry_run": True,
+    },
+    {
         "id": "video_to_frames",
         "title": "Extract frames — turns each video in a folder into a frames subfolder",
         "script": "video_to_frames.py",
@@ -170,6 +178,11 @@ def interactive_run(tool: dict) -> int:
             prefix = input("Prefix to prepend (Enter for none): ").strip()
             if prefix:
                 args += ["--prefix", prefix]
+
+        if tool.get("ask_dry_run"):
+            ans = input("Dry run (list files without deleting)? [y/N]: ").strip().lower()
+            if ans in ("y", "yes"):
+                args.append("--dry-run")
 
     elif tool["kind"] == "labels_images":
         labels = prompt_path("YOLO labels folder (.txt)")
