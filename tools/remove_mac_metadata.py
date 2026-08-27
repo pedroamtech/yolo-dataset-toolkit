@@ -11,13 +11,14 @@ These files can confuse dataset loaders (an "image" like ._photo.jpg has no
 pixels) and inflate file counts, so it is safe to strip them.
 
 On Windows these files are usually flagged Hidden (H) / System (S) / read-only
-(R), so a plain delete fails. This is the Python equivalent of running
+(R), so a plain delete fails. This is the Python equivalent of
 
     del /s /f /q /a:h .DS_Store ._*
 
-from CMD: os.walk visits every sub-folder (including hidden ones), the H/S/R
-attributes are cleared with `attrib`, and a `del` fallback is used if
-os.remove still refuses.
+plus a pass for the same names when they are *not* hidden: os.walk visits
+every sub-folder (hidden ones included), the H/S/R attributes are cleared via
+the Win32 API, and CMD's own `del` is used as a fallback. If the recursive
+walk finds nothing on Windows, the raw `del` commands are run as a safety net.
 
 Usage:
     python tools/remove_mac_metadata.py                       # folder dialog
@@ -27,6 +28,7 @@ Usage:
 
 import argparse
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -45,25 +47,41 @@ def pick_folder() -> str:
     return folder
 
 
+def normalize_dir(raw: str) -> str:
+    """Resolve the folder to an absolute path.
+
+    A bare drive letter like "E:" resolves to that drive's *current*
+    directory, not its root, so turn "E:" into "E:\\" first.
+    """
+    raw = raw.strip().strip('"')
+    if re.fullmatch(r"[A-Za-z]:", raw):
+        raw += "\\"
+    return os.path.abspath(raw)
+
+
 def is_mac_metadata(name: str) -> bool:
     return name == ".DS_Store" or name.startswith("._")
 
 
-def force_delete(path: str) -> None:
-    """Delete a file even if flagged read-only / hidden / system.
-
-    Mirrors `del /f /a:h`: clear the attributes, then remove. Falls back to
-    CMD's own `del` if Python's os.remove is still denied.
-    """
+def clear_attributes(path: str) -> None:
+    """Strip read-only / hidden / system so the file can be deleted."""
     try:
         os.chmod(path, stat.S_IWRITE)
     except OSError:
         pass
-
     if IS_WINDOWS:
-        subprocess.run(["attrib", "-H", "-S", "-R", path],
-                       capture_output=True, check=False)
+        FILE_ATTRIBUTE_NORMAL = 0x80
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetFileAttributesW(str(path), FILE_ATTRIBUTE_NORMAL)
+        except Exception:
+            subprocess.run(["attrib", "-H", "-S", "-R", path],
+                           capture_output=True, check=False)
 
+
+def force_delete(path: str) -> None:
+    """Delete a file even if flagged read-only / hidden / system."""
+    clear_attributes(path)
     try:
         os.remove(path)
         return
@@ -72,45 +90,65 @@ def force_delete(path: str) -> None:
             raise
 
     # Last resort on Windows: let the shell delete it.
-    result = subprocess.run(["cmd", "/c", "del", "/f", "/q", "/a", path],
-                            capture_output=True, check=False)
+    subprocess.run(["cmd", "/c", "del", "/f", "/q", "/a", path],
+                   capture_output=True, check=False)
     if os.path.exists(path):
-        raise OSError(result.stderr.decode(errors="replace").strip()
-                      or "del command failed")
+        raise OSError("delete denied by the OS")
 
 
-def remove_mac_metadata(target_dir: Path, dry_run: bool = False) -> None:
-    # os.walk("E:") walks E:'s *current* directory, not its root — normalise.
-    root_dir = os.path.abspath(str(target_dir))
+def cmd_del_sweep(root_dir: str) -> None:
+    """Run the raw CMD delete as a safety net (hidden + non-hidden passes)."""
+    for extra in (["/a:h"], []):
+        subprocess.run(
+            ["cmd", "/c", "del", "/s", "/f", "/q", *extra, ".DS_Store", "._*"],
+            cwd=root_dir, capture_output=True, check=False)
+
+
+def remove_mac_metadata(target_dir: str, dry_run: bool = False) -> None:
+    root_dir = normalize_dir(target_dir)
+    print(f"Scanning : {root_dir}")
+    if not os.path.isdir(root_dir):
+        print(f"[ERROR] Not a folder: {root_dir}")
+        sys.exit(1)
+
+    def on_walk_error(exc: OSError) -> None:
+        print(f"  [skipped] {exc}")
+
+    matches = []
+    for root, _dirs, files in os.walk(root_dir, onerror=on_walk_error):
+        for name in files:
+            if is_mac_metadata(name):
+                matches.append(os.path.join(root, name))
+
+    print(f"Found    : {len(matches)} macOS metadata file(s)")
 
     n_removed = n_failed = 0
     freed_bytes = 0
 
-    for root, _dirs, files in os.walk(root_dir):
-        for name in files:
-            if not is_mac_metadata(name):
-                continue
+    for path in matches:
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            size = 0
 
-            path = os.path.join(root, name)
-            try:
-                size = os.path.getsize(path)
-            except OSError:
-                size = 0
+        if dry_run:
+            print(f"  would remove : {path}")
+            n_removed += 1
+            freed_bytes += size
+            continue
 
-            if dry_run:
-                print(f"  would remove : {path}")
-                n_removed += 1
-                freed_bytes += size
-                continue
+        try:
+            force_delete(path)
+            print(f"  removed : {path}")
+            n_removed += 1
+            freed_bytes += size
+        except OSError as exc:
+            print(f"  [FAILED] {path} — {exc}")
+            n_failed += 1
 
-            try:
-                force_delete(path)
-                print(f"  removed : {path}")
-                n_removed += 1
-                freed_bytes += size
-            except OSError as exc:
-                print(f"  [FAILED] {path} — {exc}")
-                n_failed += 1
+    if not dry_run and IS_WINDOWS and n_removed == 0 and n_failed == 0:
+        print("  walk found nothing — running raw CMD 'del' sweep...")
+        cmd_del_sweep(root_dir)
 
     verb = "Would remove" if dry_run else "Removed"
     print(f"\nFolder : {root_dir}")
@@ -122,7 +160,7 @@ def remove_mac_metadata(target_dir: Path, dry_run: bool = False) -> None:
 def main():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("folder", nargs="?", type=Path, default=None,
+    p.add_argument("folder", nargs="?", default=None,
                    help="Folder to scan recursively. "
                         "Falls back to a folder-picker dialog if omitted.")
     p.add_argument("--dry-run", action="store_true",
@@ -131,16 +169,13 @@ def main():
 
     if args.folder:
         target_dir = args.folder
-        if not target_dir.is_dir():
-            print(f"Error: '{target_dir}' is not a valid folder.")
-            sys.exit(1)
     else:
         print("Select the folder in the pop-up window...")
         picked = pick_folder()
         if not picked:
             print("No folder selected.")
             sys.exit(0)
-        target_dir = Path(picked)
+        target_dir = picked
 
     remove_mac_metadata(target_dir, dry_run=args.dry_run)
 
