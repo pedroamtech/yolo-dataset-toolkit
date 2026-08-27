@@ -27,27 +27,40 @@ now live there) and have been removed.
 
 ## Installation
 
-Developed and tested with **Python 3.13** (Anaconda).
+Developed and tested with **Python 3.13** (Anaconda). Set up the
+environment manually, step by step:
 
-Create the Conda environment from `environment.yml` (pins Python 3.13 and
-installs the pip dependencies):
+1. **Create the Conda environment** with a pinned Python version:
 
-```bash
-conda env create -f environment.yml
-conda activate yolo-toolkit
-```
+   ```bash
+   conda create -n yolo-toolkit python=3.13
+   ```
 
-Or set it up manually:
+2. **Activate it:**
 
-```bash
-conda create -n yolo-toolkit python=3.13
-conda activate yolo-toolkit
-pip install -r requirements.txt      # major-version-capped ranges
-# or, for an exact reproducible environment:
-pip install -r requirements.lock     # fully pinned versions
-```
+   ```bash
+   conda activate yolo-toolkit
+   ```
 
-Regenerate the lock file after changing `requirements.txt`:
+3. **Install the dependencies** — either the major-version-capped ranges:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+   or the fully pinned versions for an exact, reproducible environment:
+
+   ```bash
+   pip install -r requirements.lock
+   ```
+
+4. **Verify the install:**
+
+   ```bash
+   python -c "import cv2, numpy, pandas, matplotlib, scipy, sklearn; print('OK')"
+   ```
+
+After changing `requirements.txt`, regenerate the lock file:
 
 ```bash
 pip install -r requirements.txt && pip freeze > requirements.lock
