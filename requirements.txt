@@ -1,9 +1,9 @@
 opencv-python<5
-numpy
-pandas
-matplotlib
-seaborn
-scipy
-scikit-learn
-tqdm
-Pillow
+numpy<3
+pandas<4
+matplotlib<4
+seaborn<0.14
+scipy<2
+scikit-learn<2
+tqdm<5
+Pillow<13
