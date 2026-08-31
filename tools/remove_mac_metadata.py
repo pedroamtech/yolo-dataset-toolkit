@@ -63,6 +63,14 @@ def is_mac_metadata(name: str) -> bool:
     return name == ".DS_Store" or name.startswith("._")
 
 
+def _win_long(path: str) -> str:
+    """Prefix with \\\\?\\ so Win32 calls survive paths longer than 260 chars."""
+    abspath = os.path.abspath(path)
+    if abspath.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + abspath[2:]
+    return "\\\\?\\" + abspath
+
+
 def clear_attributes(path: str) -> None:
     """Strip read-only / hidden / system so the file can be deleted."""
     try:
@@ -73,26 +81,49 @@ def clear_attributes(path: str) -> None:
         FILE_ATTRIBUTE_NORMAL = 0x80
         try:
             import ctypes
-            ctypes.windll.kernel32.SetFileAttributesW(str(path), FILE_ATTRIBUTE_NORMAL)
+            ctypes.windll.kernel32.SetFileAttributesW(_win_long(path), FILE_ATTRIBUTE_NORMAL)
         except Exception:
             subprocess.run(["attrib", "-H", "-S", "-R", path],
                            capture_output=True, check=False)
 
 
+def _still_there(path: str) -> bool:
+    try:
+        os.stat(path)
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True  # can't stat but not "not found" — assume still present
+
+
 def force_delete(path: str) -> None:
     """Delete a file even if flagged read-only / hidden / system."""
     clear_attributes(path)
+
     try:
         os.remove(path)
-        return
     except OSError:
         if not IS_WINDOWS:
             raise
 
-    # Last resort on Windows: let the shell delete it.
+    if not _still_there(path):
+        return
+
+    # Win32 DeleteFileW with the long-path prefix.
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            ok = ctypes.windll.kernel32.DeleteFileW(_win_long(path))
+            if ok and not _still_there(path):
+                return
+        except Exception:
+            pass
+
+    # Last resort: let the shell delete it.
     subprocess.run(["cmd", "/c", "del", "/f", "/q", "/a", path],
                    capture_output=True, check=False)
-    if os.path.exists(path):
+    if _still_there(path):
         raise OSError("delete denied by the OS")
 
 
@@ -114,12 +145,15 @@ def remove_mac_metadata(target_dir: str, dry_run: bool = False) -> None:
     def on_walk_error(exc: OSError) -> None:
         print(f"  [skipped] {exc}")
 
-    matches = []
-    for root, _dirs, files in os.walk(root_dir, onerror=on_walk_error):
-        for name in files:
-            if is_mac_metadata(name):
-                matches.append(os.path.join(root, name))
+    def scan() -> list:
+        found = []
+        for root, _dirs, files in os.walk(root_dir, onerror=on_walk_error):
+            for name in files:
+                if is_mac_metadata(name):
+                    found.append(os.path.join(root, name))
+        return found
 
+    matches = scan()
     print(f"Found    : {len(matches)} macOS metadata file(s)")
 
     n_removed = n_failed = 0
@@ -146,8 +180,8 @@ def remove_mac_metadata(target_dir: str, dry_run: bool = False) -> None:
             print(f"  [FAILED] {path} — {exc}")
             n_failed += 1
 
-    if not dry_run and IS_WINDOWS and n_removed == 0 and n_failed == 0:
-        print("  walk found nothing — running raw CMD 'del' sweep...")
+    if not dry_run and IS_WINDOWS and (n_failed or (matches and n_removed == 0)):
+        print("  running raw CMD 'del' sweep as a fallback...")
         cmd_del_sweep(root_dir)
 
     verb = "Would remove" if dry_run else "Removed"
@@ -155,6 +189,15 @@ def remove_mac_metadata(target_dir: str, dry_run: bool = False) -> None:
     print(f"  {verb} : {n_removed} file(s), {freed_bytes / 1024:.1f} KiB")
     if n_failed:
         print(f"  Failed : {n_failed} file(s)")
+
+    if not dry_run:
+        remaining = scan()
+        if remaining:
+            print(f"  Still present : {len(remaining)} file(s) — first few:")
+            for path in remaining[:5]:
+                print(f"    {path}")
+        else:
+            print("  Verified      : no macOS metadata files remain.")
 
 
 def main():
