@@ -97,6 +97,35 @@ python main.py --list   # show all tool ids
 
 See each script's module docstring for exact usage and keyboard controls.
 
+### Removing macOS metadata (`.DS_Store`, `._*`)
+
+Datasets copied from a Mac carry hidden `.DS_Store` and `._*` (AppleDouble)
+files that can break loaders — a `._photo.jpg` has no pixels. Clean a folder
+or a whole drive recursively:
+
+```bash
+python main.py remove_mac_metadata "D:\Dataset\Cenidet-UAV\images"
+python main.py remove_mac_metadata "D:\" --dry-run   # list only, delete nothing
+```
+
+The script clears the Hidden/System/read-only attributes before deleting and
+re-scans afterwards, printing `Verified: no macOS metadata files remain` or
+the files still present.
+
+#### Emergency fallback (Windows CMD)
+
+If the script cannot be run, delete the files directly from **CMD** (`Win`+`R`
+→ `cmd`). Switch to the target drive and run:
+
+```bat
+D:
+del /s /f /q /a:h .DS_Store ._*
+```
+
+`/s` recurses into every sub-folder, `/f` forces read-only files, `/q` is
+quiet (no per-file prompt), `/a:h` includes hidden files. This only removes
+hidden entries; if some `._*` files are not hidden, repeat without `/a:h`.
+
 ## Expected dataset layout
 
 ```
