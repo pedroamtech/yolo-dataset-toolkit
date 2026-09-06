@@ -1,9 +1,17 @@
-opencv-python<5
-numpy<3
-pandas<4
-matplotlib<4
-seaborn<0.14
-scipy<2
-scikit-learn<2
-tqdm<5
-Pillow<13
+# Third-party runtime dependencies (major-version-capped).
+# For an exact, reproducible environment install requirements.lock instead.
+# Regenerate the lock after editing this file:
+#   pip install -r requirements.txt && pip freeze > requirements.lock
+#
+# The standard library covers the rest: argparse, csv, pathlib, shutil,
+# subprocess, tkinter (folder-picker dialogs; on Linux: apt install python3-tk).
+
+opencv-python<5      # cv2 — video_to_frames, yolo_person_labeler (HOGDescriptor, removed in OpenCV 5)
+numpy<3              # analyze_size_distribution, yolo_person_labeler
+pandas<4             # analyze_size_distribution (per-object size DataFrame + CSV export)
+matplotlib<4         # analyze_size_distribution (size-distribution figures)
+seaborn<0.14         # analyze_size_distribution (KDE / distribution plots)
+scipy<2              # analyze_size_distribution (log-normal fit, CCDF stats)
+scikit-learn<2       # split_dataset (train_test_split reproducible split)
+tqdm<5              # progress bars — rename_images, standardize_frame_numbers, normalize_manipal_labels, yolo_person_labeler
+Pillow<13           # analyze_size_distribution (reads image sizes for Relative Size)

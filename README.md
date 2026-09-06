@@ -27,6 +27,158 @@ internal `tools/` folder.
 `yolo_person_labeler.py` (zoom/pan box editing + per-class color rendering
 now live there) and have been removed.
 
+### Tool reference
+
+Every script also prints this detail in its `--help` / module docstring. All
+of them accept the target path as the first positional argument and fall back
+to a folder-picker dialog when run with no arguments.
+
+#### `clean_dataset.py` — drop images with no person
+
+Keeps only images whose YOLO label file has at least one **class 0** (person)
+row. Images that are missing a label, have an empty label, or have labels for
+other classes only are rejected: the image **and** its `.txt` are moved to
+`_removed/` (use `--delete` to erase them instead). Needs `images/` and
+`labels/` under the dataset folder.
+
+```bash
+python tools/clean_dataset.py path/to/dataset          # move rejects to _removed/
+python tools/clean_dataset.py path/to/dataset --delete # permanently delete rejects
+```
+
+#### `remove_unlabeled_images.py` — drop images with no label file
+
+Lighter check than `clean_dataset.py`: it only asks whether a matching `.txt`
+exists at all (contents are not inspected). Images with no label file are
+moved to `_removed/images/` and never deleted. Needs `images/` and `labels/`
+under the dataset folder.
+
+```bash
+python tools/remove_unlabeled_images.py path/to/dataset
+```
+
+#### `split_dataset.py` — reproducible train/val split
+
+Splits an `images/` + `labels/` dataset into `train/` and `val/`
+subfolders (each with its own `images/` and `labels/`) using
+`sklearn.train_test_split` with a fixed seed. Every image is kept together
+with its label file; images without a label are still placed in the split as
+background/negatives. Files are copied by default; `--move` relocates them.
+
+```bash
+python tools/split_dataset.py path/to/dataset
+python tools/split_dataset.py path/to/dataset --ratio 0.8 --seed 42 --move
+```
+
+#### `validate_labels.py` — pre-training label sanity check
+
+Recursively finds every folder named `labels/` and scans each `.txt` for
+issues that crash training runs: class ids `>= --num-classes` or negative,
+rows without exactly 5 fields, non-finite (`NaN`/`inf`) or out-of-`[0,1]`
+coordinates, and orphan label/image files. Writes a CSV report (default
+`label_validation_report.csv`; `--report PATH` to rename, `--no-report` to
+skip). Built after an `EdgeYOLO` CUDA assert traced back to a single
+out-of-range class id.
+
+```bash
+python tools/validate_labels.py path/to/dataset --num-classes 2
+python tools/validate_labels.py path/to/dataset --num-classes 2 --report out.csv
+```
+
+#### `normalize_manipal_labels.py` — clamp coordinates into `[0, 1]`
+
+Walks the `train/`, `val/`, `test/` partitions under the dataset root
+(skipping any that are absent), clamps every YOLO coordinate into `[0, 1]`,
+and drops degenerate boxes that collapse to zero area after clamping. Rewrites
+the label files in place.
+
+```bash
+python tools/normalize_manipal_labels.py path/to/dataset
+```
+
+#### `yolo_person_labeler.py` — label, edit and review boxes
+
+All-in-one GUI (OpenCV window) that replaced the old `clean_labels.py` +
+`visualize_labels.py`. Fits each image to the window (never upscales),
+supports scroll-wheel zoom and right-drag pan, draws new class-0 boxes by
+dragging, selects/deletes existing boxes by clicking, runs HOG person
+detection on the current image (`Space`) or across the whole dataset (`B`),
+and renders boxes per-class in distinct colors. `S` saves and advances;
+`D`/`A` move without saving. Press `H` in-window for the full key list.
+
+```bash
+python tools/yolo_person_labeler.py path/to/dataset
+```
+
+#### `analyze_size_distribution.py` — object size statistics
+
+Computes Absolute Size `AS = sqrt(w·h)` and Relative Size
+`RS = sqrt(w·h / (W·H))` per object (TinyPerson Benchmark, Yu et al. 2019),
+fits a log-normal distribution, and plots the CCDF heavy-tail diagnostic.
+With no `--labels`/`--images` it runs on synthetic data so you can see the
+output; `--images` is required whenever `--labels` is given (needed for `RS`).
+`--save` writes the figure to PNG, `--compare` overlays multiple datasets.
+
+```bash
+python tools/analyze_size_distribution.py                              # synthetic demo
+python tools/analyze_size_distribution.py --labels L --images I --save
+```
+
+#### `rename_images.py` — prepend a fixed prefix
+
+Renames every image in a folder to `<prefix><original name>`. With no
+`--prefix` it is a no-op pass over the folder.
+
+```bash
+python tools/rename_images.py path/to/images --prefix "cam1_"
+```
+
+#### `standardize_frame_numbers.py` — zero-pad the trailing frame number
+
+Takes the digit block after the **last** underscore in each filename stem and
+left-pads it with zeros to 6 characters, so frame numbers sort correctly:
+
+| Before | After |
+|---|---|
+| `clip_40.jpg` | `clip_000040.jpg` |
+| `cam1_20230101_300.jpg` | `cam1_20230101_000300.jpg` |
+| `frame_000040.jpg` | `frame_000040.jpg` (already 6, unchanged) |
+| `frame_1234567.jpg` | `frame_1234567.jpg` (already > 6, never truncated) |
+
+Stems with no underscore or a non-numeric tail are left alone. Renames stop
+if the target name already exists. `--labels DIR` renames the matching
+`DIR/<stem>.txt` label in lockstep; `--dry-run` prints the plan without
+touching anything.
+
+```bash
+python tools/standardize_frame_numbers.py path/to/images
+python tools/standardize_frame_numbers.py path/to/images --labels path/to/labels
+python tools/standardize_frame_numbers.py path/to/images --dry-run
+```
+
+#### `video_to_frames.py` — explode videos into frames
+
+For every video in a folder (`.mp4 .avi .mov .mkv .flv .wmv`) it writes all
+frames to a sibling subfolder named after the video, as
+`<video>_<index:05d>.jpg`.
+
+```bash
+python tools/video_to_frames.py path/to/videos
+```
+
+#### `remove_mac_metadata.py` — strip `.DS_Store` and `._*`
+
+Recursively lists the macOS junk files that break loaders (`._photo.jpg` has
+no pixels) and inflate file counts, then asks before deleting. On Windows it
+first clears the Hidden/System/read-only attributes and falls back to CMD's
+`del` if needed. `--dry-run` only lists; `--yes` skips the confirmation.
+
+```bash
+python tools/remove_mac_metadata.py path/to/folder            # list, then ask
+python tools/remove_mac_metadata.py path/to/folder --dry-run  # list only
+python tools/remove_mac_metadata.py path/to/folder --yes      # delete, no prompt
+```
+
 ## Installation
 
 Developed and tested with **Python 3.13** (Anaconda). Set up the
