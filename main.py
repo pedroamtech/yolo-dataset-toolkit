@@ -81,6 +81,15 @@ TOOLS = [
         "ask_prefix": True,
     },
     {
+        "id": "standardize_frame_numbers",
+        "title": "Standardize frame numbers — zero-pads the trailing _<number> in filenames to 6 digits",
+        "script": "standardize_frame_numbers.py",
+        "kind": "images_dir",
+        "path_prompt": "Images folder",
+        "ask_labels_dir": True,
+        "ask_dry_run": True,
+    },
+    {
         "id": "remove_mac_metadata",
         "title": "Remove macOS metadata — lists .DS_Store and ._* files, then asks to delete them",
         "script": "remove_mac_metadata.py",
@@ -177,6 +186,16 @@ def interactive_run(tool: dict) -> int:
             prefix = input("Prefix to prepend (Enter for none): ").strip()
             if prefix:
                 args += ["--prefix", prefix]
+
+        if tool.get("ask_labels_dir"):
+            labels = prompt_path("Labels folder to rename in lockstep (Enter to skip)")
+            if labels:
+                args += ["--labels", labels]
+
+        if tool.get("ask_dry_run"):
+            ans = input("Dry run (only print planned renames)? [y/N]: ").strip().lower()
+            if ans in ("y", "yes"):
+                args.append("--dry-run")
 
     elif tool["kind"] == "labels_images":
         labels = prompt_path("YOLO labels folder (.txt)")
