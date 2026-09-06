@@ -20,7 +20,7 @@ internal `tools/` folder.
 | `tools/analyze_size_distribution.py` | Object size distribution analysis (Absolute/Relative Size, log-normal fit, CCDF heavy-tail diagnostic) following the TinyPerson Benchmark methodology (Yu et al., 2019). Runs on synthetic data if no `--labels`/`--images` are given. |
 | `tools/rename_images.py` | Batch-renames images in a folder with a fixed prefix. |
 | `tools/video_to_frames.py` | Extracts every frame from all videos in a folder into per-video subfolders. |
-| `tools/remove_mac_metadata.py` | Recursively deletes macOS junk files (`.DS_Store` and `._*` AppleDouble sidecars). Supports `--dry-run`. |
+| `tools/remove_mac_metadata.py` | Recursively finds macOS junk files (`.DS_Store` and `._*` AppleDouble sidecars), lists them, then asks before deleting (`--dry-run` to only list, `--yes` to skip the prompt). |
 
 `clean_labels.py` and `visualize_labels.py` were merged into
 `yolo_person_labeler.py` (zoom/pan box editing + per-class color rendering
@@ -100,17 +100,29 @@ See each script's module docstring for exact usage and keyboard controls.
 ### Removing macOS metadata (`.DS_Store`, `._*`)
 
 Datasets copied from a Mac carry hidden `.DS_Store` and `._*` (AppleDouble)
-files that can break loaders — a `._photo.jpg` has no pixels. Clean a folder
-or a whole drive recursively:
+files that can break loaders — a `._photo.jpg` has no pixels.
+
+The tool always **scans and lists** every match first, then asks for
+confirmation before deleting:
 
 ```bash
 python main.py remove_mac_metadata "D:\Dataset\Cenidet-UAV\images"
-python main.py remove_mac_metadata "D:\" --dry-run   # list only, delete nothing
+#   Scanning : D:\Dataset\Cenidet-UAV\images
+#   Found    : 3 macOS metadata file(s)
+#     ...list...
+#   Delete these 3 file(s)? [y/N]:      <- press Enter/n to keep them, y to delete
 ```
 
-The script clears the Hidden/System/read-only attributes before deleting and
-re-scans afterwards, printing `Verified: no macOS metadata files remain` or
-the files still present.
+Flags:
+
+```bash
+python main.py remove_mac_metadata "D:\" --dry-run   # only list, never delete or ask
+python main.py remove_mac_metadata "D:\" --yes       # delete without the prompt
+```
+
+It clears the Hidden/System/read-only attributes before deleting and re-scans
+afterwards, printing `Verified: no macOS metadata files remain` or the files
+still present.
 
 #### Emergency fallback (Windows CMD)
 

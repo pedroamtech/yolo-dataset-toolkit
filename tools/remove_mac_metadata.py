@@ -1,8 +1,9 @@
 """
-tools/remove_mac_metadata.py — Delete macOS metadata files
+tools/remove_mac_metadata.py — Find and delete macOS metadata files
 
-Recursively removes the junk files macOS sprinkles across folders when they
-are browsed or copied from a Mac:
+Recursively finds the junk files macOS sprinkles across folders when they are
+browsed or copied from a Mac, lists them, and (after a confirmation) deletes
+them:
 
     .DS_Store       ← Finder folder-view settings
     ._<name>        ← AppleDouble sidecar files (resource forks / xattrs)
@@ -10,20 +11,20 @@ are browsed or copied from a Mac:
 These files can confuse dataset loaders (an "image" like ._photo.jpg has no
 pixels) and inflate file counts, so it is safe to strip them.
 
+Flow: the folder is always scanned and the matches listed first. Then, unless
+--dry-run was given, you are asked to confirm before anything is deleted
+(--yes skips the prompt, e.g. for scripting).
+
 On Windows these files are usually flagged Hidden (H) / System (S) / read-only
-(R), so a plain delete fails. This is the Python equivalent of
-
-    del /s /f /q /a:h .DS_Store ._*
-
-plus a pass for the same names when they are *not* hidden: os.walk visits
-every sub-folder (hidden ones included), the H/S/R attributes are cleared via
-the Win32 API, and CMD's own `del` is used as a fallback. If the recursive
-walk finds nothing on Windows, the raw `del` commands are run as a safety net.
+(R), so a plain delete fails. The script clears those attributes via the
+Win32 API and falls back to CMD's own `del` (`del /s /f /q /a:h .DS_Store
+._*`) if needed.
 
 Usage:
     python tools/remove_mac_metadata.py                       # folder dialog
-    python tools/remove_mac_metadata.py path/to/folder
-    python tools/remove_mac_metadata.py path/to/folder --dry-run
+    python tools/remove_mac_metadata.py path/to/folder        # list, then ask
+    python tools/remove_mac_metadata.py path/to/folder --dry-run   # list only
+    python tools/remove_mac_metadata.py path/to/folder --yes       # no prompt
 """
 
 import argparse
@@ -33,10 +34,10 @@ import stat
 import subprocess
 import sys
 import tkinter as tk
-from pathlib import Path
 from tkinter import filedialog
 
 IS_WINDOWS = os.name == "nt"
+LIST_LIMIT = 40  # show every path up to this many, then summarise
 
 
 def pick_folder() -> str:
@@ -135,42 +136,71 @@ def cmd_del_sweep(root_dir: str) -> None:
             cwd=root_dir, capture_output=True, check=False)
 
 
-def remove_mac_metadata(target_dir: str, dry_run: bool = False) -> None:
+def scan(root_dir: str) -> list:
+    def on_walk_error(exc: OSError) -> None:
+        print(f"  [skipped] {exc}")
+
+    found = []
+    for root, _dirs, files in os.walk(root_dir, onerror=on_walk_error):
+        for name in files:
+            if is_mac_metadata(name):
+                found.append(os.path.join(root, name))
+    return found
+
+
+def print_list(paths: list) -> None:
+    shown = paths if len(paths) <= LIST_LIMIT else paths[:LIST_LIMIT]
+    for path in shown:
+        print(f"  {path}")
+    if len(paths) > LIST_LIMIT:
+        print(f"  ... and {len(paths) - LIST_LIMIT} more")
+
+
+def confirm(question: str) -> bool:
+    try:
+        return input(f"{question} [y/N]: ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
+def remove_mac_metadata(target_dir: str, dry_run: bool = False,
+                        assume_yes: bool = False) -> None:
     root_dir = normalize_dir(target_dir)
     print(f"Scanning : {root_dir}")
     if not os.path.isdir(root_dir):
         print(f"[ERROR] Not a folder: {root_dir}")
         sys.exit(1)
 
-    def on_walk_error(exc: OSError) -> None:
-        print(f"  [skipped] {exc}")
-
-    def scan() -> list:
-        found = []
-        for root, _dirs, files in os.walk(root_dir, onerror=on_walk_error):
-            for name in files:
-                if is_mac_metadata(name):
-                    found.append(os.path.join(root, name))
-        return found
-
-    matches = scan()
+    matches = scan(root_dir)
     print(f"Found    : {len(matches)} macOS metadata file(s)")
+    if matches:
+        print_list(matches)
 
+    if not matches:
+        print("Nothing to clean.")
+        return
+
+    if dry_run:
+        print("\n--dry-run: nothing was deleted.")
+        return
+
+    if not assume_yes:
+        if not sys.stdin.isatty():
+            print("\nNot an interactive terminal — re-run with --yes to delete, "
+                  "or --dry-run to only list.")
+            return
+        if not confirm(f"\nDelete these {len(matches)} file(s)?"):
+            print("Aborted — nothing was deleted.")
+            return
+
+    print()
     n_removed = n_failed = 0
     freed_bytes = 0
-
     for path in matches:
         try:
             size = os.path.getsize(path)
         except OSError:
             size = 0
-
-        if dry_run:
-            print(f"  would remove : {path}")
-            n_removed += 1
-            freed_bytes += size
-            continue
-
         try:
             force_delete(path)
             print(f"  removed : {path}")
@@ -180,24 +210,22 @@ def remove_mac_metadata(target_dir: str, dry_run: bool = False) -> None:
             print(f"  [FAILED] {path} — {exc}")
             n_failed += 1
 
-    if not dry_run and IS_WINDOWS and (n_failed or (matches and n_removed == 0)):
+    if IS_WINDOWS and (n_failed or n_removed == 0):
         print("  running raw CMD 'del' sweep as a fallback...")
         cmd_del_sweep(root_dir)
 
-    verb = "Would remove" if dry_run else "Removed"
     print(f"\nFolder : {root_dir}")
-    print(f"  {verb} : {n_removed} file(s), {freed_bytes / 1024:.1f} KiB")
+    print(f"  Removed : {n_removed} file(s), {freed_bytes / 1024:.1f} KiB")
     if n_failed:
-        print(f"  Failed : {n_failed} file(s)")
+        print(f"  Failed  : {n_failed} file(s)")
 
-    if not dry_run:
-        remaining = scan()
-        if remaining:
-            print(f"  Still present : {len(remaining)} file(s) — first few:")
-            for path in remaining[:5]:
-                print(f"    {path}")
-        else:
-            print("  Verified      : no macOS metadata files remain.")
+    remaining = scan(root_dir)
+    if remaining:
+        print(f"  Still present : {len(remaining)} file(s) — first few:")
+        for path in remaining[:5]:
+            print(f"    {path}")
+    else:
+        print("  Verified : no macOS metadata files remain.")
 
 
 def main():
@@ -207,7 +235,9 @@ def main():
                    help="Folder to scan recursively. "
                         "Falls back to a folder-picker dialog if omitted.")
     p.add_argument("--dry-run", action="store_true",
-                   help="List the files that would be removed without deleting them.")
+                   help="Only list the files found; never delete or prompt.")
+    p.add_argument("--yes", "-y", action="store_true",
+                   help="Delete without asking for confirmation.")
     args = p.parse_args()
 
     if args.folder:
@@ -220,7 +250,7 @@ def main():
             sys.exit(0)
         target_dir = picked
 
-    remove_mac_metadata(target_dir, dry_run=args.dry_run)
+    remove_mac_metadata(target_dir, dry_run=args.dry_run, assume_yes=args.yes)
 
 
 if __name__ == "__main__":
