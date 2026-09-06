@@ -79,6 +79,7 @@ TOOLS = [
         "kind": "images_dir",
         "path_prompt": "Images folder",
         "ask_prefix": True,
+        "ask_labels_dir": True,
     },
     {
         "id": "standardize_frame_numbers",
