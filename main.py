@@ -74,11 +74,12 @@ TOOLS = [
     },
     {
         "id": "rename_images",
-        "title": "Rename images — prepends a fixed prefix to every image in a folder",
+        "title": "Rename files — prepends a fixed prefix to every file in a folder (images by default)",
         "script": "rename_images.py",
         "kind": "images_dir",
-        "path_prompt": "Images folder",
+        "path_prompt": "Folder to rename",
         "ask_prefix": True,
+        "ask_ext": True,
         "ask_labels_dir": True,
     },
     {
@@ -187,6 +188,13 @@ def interactive_run(tool: dict) -> int:
             prefix = input("Prefix to prepend (Enter for none): ").strip()
             if prefix:
                 args += ["--prefix", prefix]
+
+        if tool.get("ask_ext"):
+            ext = input("Extensions to rename [Enter=images, '*'=all files, e.g. '.txt']: ").strip()
+            if ext in ("*", "all"):
+                args.append("--all-files")
+            elif ext:
+                args += ["--ext", ext]
 
         if tool.get("ask_labels_dir"):
             labels = prompt_path("Labels folder to rename in lockstep (Enter to skip)")

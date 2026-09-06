@@ -18,7 +18,7 @@ internal `tools/` folder.
 | `tools/normalize_manipal_labels.py` | Clamps YOLO-normalized coordinates into `[0, 1]` and drops degenerate (zero-area) boxes. |
 | `tools/yolo_person_labeler.py` | All-in-one labeling/editing/viewing tool — HOG auto-detection, manual box drawing, zoom/pan, click-to-select-and-delete, per-class color rendering. |
 | `tools/analyze_size_distribution.py` | Object size distribution analysis (Absolute/Relative Size, log-normal fit, CCDF heavy-tail diagnostic) following the TinyPerson Benchmark methodology (Yu et al., 2019). Runs on synthetic data if no `--labels`/`--images` are given. |
-| `tools/rename_images.py` | Batch-renames images in a folder with a fixed prefix; `--labels DIR` gives the matching `.txt` labels the same prefix. |
+| `tools/rename_images.py` | Batch-renames files in a folder with a fixed prefix (images by default; `--ext` for other extensions, `--all-files` for everything). `--labels DIR` gives the matching `.txt` labels the same prefix. |
 | `tools/standardize_frame_numbers.py` | Zero-pads the trailing `_<number>` (the digits after the last underscore) in each filename to 6 digits, e.g. `clip_40.jpg` → `clip_000040.jpg`, `cam1_20230101_300.jpg` → `cam1_20230101_000300.jpg`. Numbers already ≥ 6 digits are never truncated. Optionally renames matching `labels/*.txt` in lockstep; `--dry-run` previews. |
 | `tools/video_to_frames.py` | Extracts every frame from all videos in a folder into per-video subfolders. |
 | `tools/remove_mac_metadata.py` | Recursively finds macOS junk files (`.DS_Store` and `._*` AppleDouble sidecars), lists them, then asks before deleting (`--dry-run` to only list, `--yes` to skip the prompt). |
@@ -126,13 +126,18 @@ python tools/analyze_size_distribution.py --labels L --images I --save
 
 #### `rename_images.py` — prepend a fixed prefix
 
-Renames every image in a folder to `<prefix><original name>`. With no
-`--prefix` it is a no-op pass over the folder. `--labels DIR` also renames the
-matching `DIR/<stem>.txt` label with the same prefix so image/label pairs stay
-together; renames that would overwrite an existing file are skipped.
+Renames files in a folder to `<prefix><original name>`. By default only common
+image extensions are touched (matched case-insensitively); `--ext ".txt,.json"`
+targets other extensions instead, and `--all-files` renames every file
+regardless of extension. With no `--prefix` it is a no-op pass. `--labels DIR`
+also renames the matching `DIR/<stem>.txt` label with the same prefix so
+image/label pairs stay together. Renames that would overwrite an existing file
+are skipped; dot-files are ignored.
 
 ```bash
 python tools/rename_images.py path/to/images --prefix "cam1_"
+python tools/rename_images.py path/to/labels --prefix "cam1_" --ext .txt
+python tools/rename_images.py path/to/folder --prefix "cam1_" --all-files
 python tools/rename_images.py path/to/images --prefix "cam1_" --labels path/to/labels
 ```
 

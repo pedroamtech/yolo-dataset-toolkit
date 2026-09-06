@@ -1,13 +1,17 @@
 """
-tools/rename_images.py — Batch-rename images with a fixed prefix
+tools/rename_images.py — Batch-rename files with a fixed prefix
 
-Prepends a fixed prefix to every image in a folder. With --labels, the
-matching YOLO label file (same stem, .txt) in that folder is renamed with the
-same prefix, so image/label pairs stay together.
+Prepends a fixed prefix to every file in a folder. By default only common
+image extensions are touched; use --ext to target other extensions, or
+--all-files to rename everything. With --labels, the matching YOLO label file
+(same stem, .txt) in that folder is renamed with the same prefix, so
+image/label pairs stay together.
 
 Usage:
     python tools/rename_images.py                                  # folder dialog, no prefix
     python tools/rename_images.py path/to/images --prefix "cam1_"
+    python tools/rename_images.py path/to/labels --prefix "cam1_" --ext .txt
+    python tools/rename_images.py path/to/folder --prefix "cam1_" --all-files
     python tools/rename_images.py path/to/images --prefix "cam1_" --labels path/to/labels
 """
 
@@ -20,23 +24,43 @@ from tkinter import filedialog
 
 from tqdm import tqdm
 
-EXTENSIONS = {".jpg", ".JPG", ".jpeg", ".png", ".PNG"}
+# Default whitelist when neither --ext nor --all-files is given. Matched
+# case-insensitively (so .JPG / .JPEG / .PNG are covered too).
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
 
 
 def pick_folder() -> str:
     root = tk.Tk()
     root.withdraw()
-    folder = filedialog.askdirectory(title="Select the folder containing the images")
+    folder = filedialog.askdirectory(title="Select the folder containing the files")
     root.destroy()
     return folder
 
 
-def rename_images(img_dir: Path, prefix: str, labels_dir: Path | None) -> int:
-    images = [p for p in img_dir.iterdir() if p.suffix in EXTENSIONS]
-    for img_path in tqdm(images, desc="Renaming"):
-        renames = [(img_path, img_path.with_name(prefix + img_path.name))]
+def normalize_exts(raw: str) -> set[str]:
+    """Parse a comma/space separated extension list into a lowercase set with
+    leading dots, e.g. 'txt, .JSON' -> {'.txt', '.json'}."""
+    exts = set()
+    for token in raw.replace(",", " ").split():
+        token = token.lower()
+        exts.add(token if token.startswith(".") else "." + token)
+    return exts
+
+
+def rename_files(folder: Path, prefix: str, exts: set[str] | None,
+                 labels_dir: Path | None) -> int:
+    # exts is None -> rename every file, whatever its extension.
+    targets = [
+        p for p in sorted(folder.iterdir())
+        if p.is_file() and not p.name.startswith(".")
+        and (exts is None or p.suffix.lower() in exts)
+    ]
+
+    renamed = 0
+    for path in tqdm(targets, desc="Renaming"):
+        renames = [(path, path.with_name(prefix + path.name))]
         if labels_dir is not None:
-            old_label = labels_dir / (img_path.stem + ".txt")
+            old_label = labels_dir / (path.stem + ".txt")
             if old_label.is_file():
                 renames.append((old_label, labels_dir / (prefix + old_label.name)))
 
@@ -47,39 +71,53 @@ def rename_images(img_dir: Path, prefix: str, labels_dir: Path | None) -> int:
 
         for src, dst in renames:
             src.rename(dst)
-    return len(images)
+        renamed += 1
+    return renamed
 
 
 def main():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("images", nargs="?", default=None,
-                   help="Folder containing the images to rename. "
+    p.add_argument("folder", nargs="?", default=None,
+                   help="Folder containing the files to rename. "
                         "Falls back to a folder-picker dialog if omitted.")
     p.add_argument("--prefix", default="", help="Prefix prepended to every filename.")
+    p.add_argument("--ext", default=None,
+                   help="Comma/space separated extensions to rename (e.g. '.txt,.json'). "
+                        "Default: common image extensions.")
+    p.add_argument("--all-files", action="store_true",
+                   help="Rename every file in the folder regardless of extension.")
     p.add_argument("--labels", type=Path, default=None,
                    help="Optional labels folder; matching .txt files get the same prefix.")
     args = p.parse_args()
 
-    if args.images:
-        img_dir = args.images
-        if not os.path.isdir(img_dir):
-            print(f"Error: '{img_dir}' is not a valid folder.")
+    if args.folder:
+        folder = args.folder
+        if not os.path.isdir(folder):
+            print(f"Error: '{folder}' is not a valid folder.")
             sys.exit(1)
     else:
-        print("Select the images folder in the pop-up window...")
-        img_dir = pick_folder()
-        if not img_dir:
+        print("Select the folder in the pop-up window...")
+        folder = pick_folder()
+        if not folder:
             print("No folder selected.")
             sys.exit(0)
+
+    if args.all_files:
+        exts = None
+    elif args.ext:
+        exts = normalize_exts(args.ext)
+    else:
+        exts = IMAGE_EXTS
 
     if args.labels is not None and not args.labels.is_dir():
         print(f"Error: '{args.labels}' is not a valid folder.")
         sys.exit(1)
 
-    count = rename_images(Path(img_dir), args.prefix, args.labels)
+    count = rename_files(Path(folder), args.prefix, exts, args.labels)
+    scope = "files" if exts is None else "matching files"
     suffix = " (labels renamed too)" if args.labels is not None else ""
-    print(f"Done — {count} images renamed with prefix '{args.prefix}'{suffix}")
+    print(f"Done — {count} {scope} renamed with prefix '{args.prefix}'{suffix}")
 
 
 if __name__ == "__main__":
