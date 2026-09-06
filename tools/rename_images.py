@@ -48,20 +48,33 @@ def normalize_exts(raw: str) -> set[str]:
     return exts
 
 
+def scan_targets(folder: Path, exts: set[str] | None) -> list[Path]:
+    """List the files to rename. Uses os.scandir so the is-file / extension
+    check reads the directory entry the OS already returned instead of doing
+    an extra stat() per file — the folder listing is what makes big image
+    folders slow to start."""
+    names = []
+    with os.scandir(folder) as it:
+        for entry in it:
+            name = entry.name
+            if name.startswith(".") or not entry.is_file():
+                continue
+            if exts is None or os.path.splitext(name)[1].lower() in exts:
+                names.append(name)
+    names.sort()
+    return [folder / n for n in names]
+
+
 def rename_files(folder: Path, prefix: str, exts: set[str] | None,
                  labels_dir: Path | None, dry_run: bool) -> int:
-    # exts is None -> rename every file, whatever its extension.
-    targets = [
-        p for p in sorted(folder.iterdir())
-        if p.is_file() and not p.name.startswith(".")
-        and (exts is None or p.suffix.lower() in exts)
-    ]
-
     scope = "file(s)" if exts is None else "matching file(s)"
-    print(f"Folder : {folder}")
-    print(f"Found  : {len(targets)} {scope}")
+    print(f"Folder   : {folder}")
+    print(f"Scanning : listing {scope}...", flush=True)
+    targets = scan_targets(folder, exts)
+
+    print(f"Found    : {len(targets)} {scope}")
     if labels_dir is not None:
-        print(f"Labels : {labels_dir}")
+        print(f"Labels   : {labels_dir}")
     if not targets:
         print("Nothing to rename — check the folder path and the --ext filter.")
         return 0
