@@ -81,6 +81,7 @@ TOOLS = [
         "ask_prefix": True,
         "ask_ext": True,
         "ask_labels_dir": True,
+        "ask_dry_run": True,
     },
     {
         "id": "standardize_frame_numbers",
@@ -197,7 +198,7 @@ def interactive_run(tool: dict) -> int:
                 args += ["--ext", ext]
 
         if tool.get("ask_labels_dir"):
-            labels = prompt_path("Labels folder to rename in lockstep (Enter to skip)")
+            labels = input("Labels folder to rename in lockstep (Enter to skip): ").strip().strip('"')
             if labels:
                 args += ["--labels", labels]
 

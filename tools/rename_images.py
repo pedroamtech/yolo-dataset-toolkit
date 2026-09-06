@@ -13,6 +13,7 @@ Usage:
     python tools/rename_images.py path/to/labels --prefix "cam1_" --ext .txt
     python tools/rename_images.py path/to/folder --prefix "cam1_" --all-files
     python tools/rename_images.py path/to/images --prefix "cam1_" --labels path/to/labels
+    python tools/rename_images.py path/to/images --prefix "cam1_" --dry-run
 """
 
 import argparse
@@ -48,7 +49,7 @@ def normalize_exts(raw: str) -> set[str]:
 
 
 def rename_files(folder: Path, prefix: str, exts: set[str] | None,
-                 labels_dir: Path | None) -> int:
+                 labels_dir: Path | None, dry_run: bool) -> int:
     # exts is None -> rename every file, whatever its extension.
     targets = [
         p for p in sorted(folder.iterdir())
@@ -56,22 +57,51 @@ def rename_files(folder: Path, prefix: str, exts: set[str] | None,
         and (exts is None or p.suffix.lower() in exts)
     ]
 
-    renamed = 0
-    for path in tqdm(targets, desc="Renaming"):
+    scope = "file(s)" if exts is None else "matching file(s)"
+    print(f"Folder : {folder}")
+    print(f"Found  : {len(targets)} {scope}")
+    if labels_dir is not None:
+        print(f"Labels : {labels_dir}")
+    if not targets:
+        print("Nothing to rename — check the folder path and the --ext filter.")
+        return 0
+
+    renamed = skipped = errors = labels_hit = 0
+    for path in tqdm(targets, desc="Renaming", disable=dry_run):
         renames = [(path, path.with_name(prefix + path.name))]
+        has_label = False
         if labels_dir is not None:
             old_label = labels_dir / (path.stem + ".txt")
             if old_label.is_file():
+                has_label = True
                 renames.append((old_label, labels_dir / (prefix + old_label.name)))
 
         clash = next((dst for _, dst in renames if dst.exists()), None)
         if clash is not None:
             print(f"[SKIP] target already exists: {clash.name}")
+            skipped += 1
             continue
 
-        for src, dst in renames:
-            src.rename(dst)
+        try:
+            for src, dst in renames:
+                if dry_run:
+                    print(f"[DRY-RUN] {src.name} -> {dst.name}")
+                else:
+                    src.rename(dst)
+        except OSError as e:
+            print(f"[ERROR] {path.name}: {e}")
+            errors += 1
+            continue
+
         renamed += 1
+        if has_label:
+            labels_hit += 1
+
+    verb = "would be renamed" if dry_run else "renamed"
+    print(f"\n{renamed} {verb}"
+          + (f", {labels_hit} with a matching label" if labels_dir is not None else "")
+          + (f", {skipped} skipped (name clash)" if skipped else "")
+          + (f", {errors} error(s)" if errors else ""))
     return renamed
 
 
@@ -89,6 +119,8 @@ def main():
                    help="Rename every file in the folder regardless of extension.")
     p.add_argument("--labels", type=Path, default=None,
                    help="Optional labels folder; matching .txt files get the same prefix.")
+    p.add_argument("--dry-run", action="store_true",
+                   help="Print the planned renames without touching any file.")
     args = p.parse_args()
 
     if args.folder:
@@ -114,10 +146,7 @@ def main():
         print(f"Error: '{args.labels}' is not a valid folder.")
         sys.exit(1)
 
-    count = rename_files(Path(folder), args.prefix, exts, args.labels)
-    scope = "files" if exts is None else "matching files"
-    suffix = " (labels renamed too)" if args.labels is not None else ""
-    print(f"Done — {count} {scope} renamed with prefix '{args.prefix}'{suffix}")
+    rename_files(Path(folder), args.prefix, exts, args.labels, args.dry_run)
 
 
 if __name__ == "__main__":

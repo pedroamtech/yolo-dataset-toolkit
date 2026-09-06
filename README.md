@@ -131,11 +131,15 @@ image extensions are touched (matched case-insensitively); `--ext ".txt,.json"`
 targets other extensions instead, and `--all-files` renames every file
 regardless of extension. With no `--prefix` it is a no-op pass. `--labels DIR`
 also renames the matching `DIR/<stem>.txt` label with the same prefix so
-image/label pairs stay together. Renames that would overwrite an existing file
-are skipped; dot-files are ignored.
+image/label pairs stay together. It prints the resolved folder and the file
+count before starting; renames that would overwrite an existing file are
+skipped, per-file OS errors are reported and don't abort the run, and
+dot-files are ignored. `--dry-run` prints the planned renames without touching
+anything.
 
 ```bash
 python tools/rename_images.py path/to/images --prefix "cam1_"
+python tools/rename_images.py path/to/images --prefix "cam1_" --dry-run
 python tools/rename_images.py path/to/labels --prefix "cam1_" --ext .txt
 python tools/rename_images.py path/to/folder --prefix "cam1_" --all-files
 python tools/rename_images.py path/to/images --prefix "cam1_" --labels path/to/labels
