@@ -2,10 +2,11 @@
 tools/normalize_manipal_labels.py — Clamp YOLO labels into [0, 1]
 
 Clamps normalized YOLO coordinates into [0, 1] and drops degenerate
-(zero-area) boxes. Scans train/val/test partitions under the dataset root,
-skipping any that don't exist, and writes the result to a separate output
-folder (images are copied, labels are normalized) so the source dataset is
-left untouched:
+(zero-area) boxes. Processes every partition folder under the dataset root
+that has a labels/ subfolder (e.g. training/, validation/, test/ or
+train/, val/, test/), keeping its name, and writes the result to a separate
+output folder (images are copied, labels are normalized) so the source
+dataset is left untouched:
 
     <output>/<partition>/images/...   <output>/<partition>/labels/...
 
@@ -24,8 +25,6 @@ from pathlib import Path
 from tkinter import filedialog
 
 from tqdm import tqdm
-
-PARTITIONS = ["train", "val", "test"]   # folders to process; skip missing ones
 
 
 def pick_folder() -> str:
@@ -50,13 +49,16 @@ def normalize_label(src: Path) -> list[str]:
     return lines_out
 
 
-def normalize_dataset(base_dir: Path, out_dir: Path) -> tuple[int, int, int]:
+def find_partitions(base_dir: Path) -> list[str]:
+    """Every subfolder of the dataset root that has a labels/ folder."""
+    return sorted(d.name for d in base_dir.iterdir() if d.is_dir() and (d / "labels").is_dir())
+
+
+def normalize_dataset(base_dir: Path, out_dir: Path, partitions: list[str]) -> tuple[int, int, int]:
     total_files = total_boxes = total_images = 0
 
-    for partition in PARTITIONS:
+    for partition in partitions:
         label_dir = base_dir / partition / "labels"
-        if not label_dir.exists():
-            continue
 
         label_out = out_dir / partition / "labels"
         label_out.mkdir(parents=True, exist_ok=True)
@@ -107,9 +109,14 @@ def main():
     if out_dir == base_dir:
         print("Error: the output folder must be different from the dataset folder.")
         sys.exit(1)
+    partitions = find_partitions(base_dir)
+    if not partitions:
+        print(f"Error: no partition folders with a labels/ subfolder found in '{base_dir}'.")
+        sys.exit(1)
+    print(f"Partitions: {', '.join(partitions)}")
     print(f"Output: {out_dir}")
 
-    total_files, total_boxes, total_images = normalize_dataset(base_dir, out_dir)
+    total_files, total_boxes, total_images = normalize_dataset(base_dir, out_dir, partitions)
     print(f"Done — {total_files} label files, {total_boxes} boxes normalized, "
           f"{total_images} images copied to {out_dir}")
 

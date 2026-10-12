@@ -64,7 +64,7 @@ TOOLS = [
                  "zero-area boxes into a new output folder",
         "script": "normalize_manipal_labels.py",
         "kind": "dataset_dir",
-        "path_prompt": "Dataset root folder (with train/val/test subfolders)",
+        "path_prompt": "Dataset root folder (with partition subfolders, e.g. training/validation/test)",
         "ask_output": "_normalized",
     },
     {

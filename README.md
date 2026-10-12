@@ -88,8 +88,10 @@ python tools/validate_labels.py path/to/dataset --num-classes 2 --report out.csv
 
 #### `normalize_manipal_labels.py` — Manipal: clamp coordinates into `[0, 1]`
 
-Walks the `train/`, `val/`, `test/` partitions under the dataset root
-(skipping any that are absent), clamps every YOLO coordinate into `[0, 1]`,
+Processes every partition folder under the dataset root that contains a
+`labels/` subfolder (e.g. Manipal's `training/`, `validation/`, `test/`, or
+`train/`, `val/`, `test/`), keeping the folder names in the output. It
+clamps every YOLO coordinate into `[0, 1]`,
 and drops degenerate boxes that collapse to zero area after clamping, as well
 as malformed rows. The result goes to a separate output folder with the same
 partition layout (`<output>/<partition>/images/` copied,
