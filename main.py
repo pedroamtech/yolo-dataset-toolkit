@@ -58,11 +58,24 @@ TOOLS = [
         "ask_num_classes": True,
     },
     {
-        "id": "normalize_labels",
-        "title": "Normalize labels — clamps YOLO coordinates to [0,1] and drops zero-area boxes",
+        "id": "normalize_manipal",
+        "aliases": ["normalize_labels"],
+        "title": "Normalize Manipal labels — clamps YOLO coordinates to [0,1] and drops "
+                 "zero-area boxes into a new output folder",
         "script": "normalize_manipal_labels.py",
         "kind": "dataset_dir",
         "path_prompt": "Dataset root folder (with train/val/test subfolders)",
+        "ask_output": "_normalized",
+    },
+    {
+        "id": "normalize_okutama",
+        "title": "Normalize Okutama-Action — converts 4K VATIC annotations into a clean "
+                 "YOLO train/test dataset (images/ + labels/)",
+        "script": "normalize_okutama.py",
+        "kind": "dataset_dir",
+        "path_prompt": "Okutama-Action root folder (contains TrainSetFrames/ and TestSetFrames/)",
+        "ask_output": "_YOLO",
+        "ask_okutama": True,
     },
     {
         "id": "yolo_person_labeler",
@@ -123,7 +136,7 @@ def find_tool(token: str):
             return TOOLS[idx]
         return None
     for tool in TOOLS:
-        if tool["id"] == token:
+        if token == tool["id"] or token in tool.get("aliases", []):
             return tool
     return None
 
@@ -184,6 +197,25 @@ def interactive_run(tool: dict) -> int:
                     args += ["--num-classes", n]
                     break
                 print("  Enter a valid integer.")
+
+        if tool.get("ask_output"):
+            out = input(f"Output folder (Enter for '<dataset>{tool['ask_output']}'): ").strip().strip('"')
+            if out:
+                args += ["--output", out]
+
+        if tool.get("ask_okutama"):
+            interp = input("Max distance to a hand-annotated keyframe "
+                           "[Enter = all frames, 0 = keyframes only]: ").strip()
+            if interp:
+                args += ["--max-interp", interp]
+
+            step = input("Keep one of every N frames [1]: ").strip()
+            if step:
+                args += ["--step", step]
+
+            ans = input("Keep frames with no person as negatives? [y/N]: ").strip().lower()
+            if ans in ("y", "yes"):
+                args.append("--keep-empty")
 
         if tool.get("ask_prefix"):
             prefix = input("Prefix to prepend (Enter for none): ").strip()

@@ -15,7 +15,8 @@ internal `tools/` folder.
 | `tools/remove_unlabeled_images.py` | Moves images with no matching `.txt` label file to `_removed/`. |
 | `tools/split_dataset.py` | 80/20 train/val split with a reproducible random seed (uses `sklearn.train_test_split`). |
 | `tools/validate_labels.py` | Scans label files for issues that can crash training: out-of-range classes, malformed rows, NaN/out-of-bounds coordinates, orphan files. Writes a CSV report. |
-| `tools/normalize_manipal_labels.py` | Clamps YOLO-normalized coordinates into `[0, 1]` and drops degenerate (zero-area) boxes. |
+| `tools/normalize_manipal_labels.py` | Manipal dataset: clamps YOLO-normalized coordinates into `[0, 1]` and drops degenerate (zero-area) boxes, writing the result to a new output folder (the source is left untouched). |
+| `tools/normalize_okutama.py` | Okutama-Action dataset: converts its 4K VATIC annotations into a clean single-class (person) YOLO `train/` + `test/` dataset, rebuilding interpolated boxes with camera-motion compensation so they stay on the person during fast drone turns. |
 | `tools/yolo_person_labeler.py` | All-in-one labeling/editing/viewing tool — HOG auto-detection, manual box drawing, zoom/pan, click-to-select-and-delete, per-class color rendering. |
 | `tools/analyze_size_distribution.py` | Object size distribution analysis (Absolute/Relative Size, log-normal fit, CCDF heavy-tail diagnostic) following the TinyPerson Benchmark methodology (Yu et al., 2019). Runs on synthetic data if no `--labels`/`--images` are given. |
 | `tools/rename_images.py` | Batch-renames files in a folder with a fixed prefix (images by default; `--ext` for other extensions, `--all-files` for everything). `--labels DIR` gives the matching `.txt` labels the same prefix. |
@@ -85,15 +86,78 @@ python tools/validate_labels.py path/to/dataset --num-classes 2
 python tools/validate_labels.py path/to/dataset --num-classes 2 --report out.csv
 ```
 
-#### `normalize_manipal_labels.py` — clamp coordinates into `[0, 1]`
+#### `normalize_manipal_labels.py` — Manipal: clamp coordinates into `[0, 1]`
 
 Walks the `train/`, `val/`, `test/` partitions under the dataset root
 (skipping any that are absent), clamps every YOLO coordinate into `[0, 1]`,
-and drops degenerate boxes that collapse to zero area after clamping. Rewrites
-the label files in place.
+and drops degenerate boxes that collapse to zero area after clamping, as well
+as malformed rows. The result goes to a separate output folder with the same
+partition layout (`<output>/<partition>/images/` copied,
+`<output>/<partition>/labels/` normalized); the source dataset is never
+modified. `-o/--output` sets the folder (default: `<dataset>_normalized` next
+to the dataset); it must differ from the dataset folder. In the `main.py` menu
+it asks for both paths.
 
 ```bash
-python tools/normalize_manipal_labels.py path/to/dataset
+python tools/normalize_manipal_labels.py path/to/dataset                 # -> path/to/dataset_normalized
+python tools/normalize_manipal_labels.py path/to/dataset -o path/to/out
+```
+
+#### `normalize_okutama.py` — Okutama-Action: VATIC annotations to clean YOLO
+
+Converts the [Okutama-Action](http://okutama-action.org/) dataset as
+distributed (frames per video and VATIC-style labels in 3840×2160 pixel
+space) into a single-class YOLO dataset:
+
+```
+<output>/
+    data.yaml                 ← nc: 1, names: ['person'] (test/ doubles as val)
+    train/images/1_1_1_000540.jpg    train/labels/1_1_1_000540.txt
+    test/images/...                  test/labels/...
+```
+
+Files are named `<video>_<frame:06d>` (`1.1.1` frame `540` →
+`1_1_1_000540`), so names never collide across videos and frames sort in
+order. All action labels are collapsed into class `0` (person). Images are
+copied (`--move` relocates them); the source dataset is not modified
+otherwise.
+
+Why it does more than a coordinate conversion: Okutama was annotated by hand
+only **every 10th frame**; VATIC filled the 9 frames in between by linear
+interpolation, so during fast drone turns those boxes end up on empty ground.
+The script:
+
+- **Rebuilds interpolated boxes with camera-motion compensation:** it
+  estimates frame-to-frame camera motion (sparse optical flow + RANSAC
+  homography at 640×360), warps the boxes of the two surrounding
+  hand-annotated keyframes into the frame and blends them by distance. In a
+  leave-one-keyframe-out test (20-frame gaps) mean IoU against the hand
+  annotation rose from 0.65 to 0.81, and boxes with IoU < 0.5 fell from 23.5%
+  to 1.5% (from 73.5% to 1.2% during fast camera motion).
+- **Skips unreliable frames:** camera motion could not be estimated, a person
+  enters/leaves the image between keyframes, or a track was closed while the
+  person was still visible (that person would be in the image with no box).
+- **Skips** frames never annotated, frames with no visible person (unless
+  `--keep-empty`), drops `lost=1` rows, clamps boxes to the image, and removes
+  near-duplicate boxes (`--dedup-iou`, default 0.9).
+
+On the full dataset this yields ~43k train / ~11k test images (~327k boxes)
+in about 8 minutes, and `validate_labels.py` reports no issues.
+
+| Flag | Effect |
+|---|---|
+| `-o/--output DIR` | Output folder (default: `<dataset>_YOLO` next to the dataset). |
+| `--max-interp N` | Keep only frames within N frames of a hand-annotated keyframe. `-1` (default) = all, `0` = keyframes only. |
+| `--no-motion-comp` | Keep VATIC's linear interpolation (faster, but boxes drift during turns). |
+| `--step N` | Keep one of every N frames (consecutive frames are near-identical). |
+| `--keep-empty` | Keep frames with no visible person as negatives (empty `.txt`). |
+| `--min-size PX` | Minimum box side in 4K pixels (default 3). |
+| `--move` | Move images instead of copying them. |
+
+```bash
+python tools/normalize_okutama.py "path/to/Okutama Action"                  # -> "Okutama Action_YOLO"
+python tools/normalize_okutama.py "path/to/Okutama Action" -o path/to/out --step 5
+python tools/normalize_okutama.py "path/to/Okutama Action" --max-interp 0   # keyframes only
 ```
 
 #### `yolo_person_labeler.py` — label, edit and review boxes
@@ -246,7 +310,10 @@ python main.py
 ```
 
 Shows a numbered menu of tasks; pick one and it prompts for whatever that
-tool needs (dataset path, number of classes, etc.) before running it.
+tool needs (dataset path, number of classes, etc.) before running it. Both
+dataset normalizers (`normalize_manipal` and `normalize_okutama`) ask for the
+dataset folder and the output folder; pressing Enter on the output uses the
+default (`<dataset>_normalized` / `<dataset>_YOLO`).
 
 ### Direct script / non-interactive
 
@@ -258,8 +325,12 @@ tool id followed by args passed straight through, for scripting:
 python tools/clean_dataset.py path/to/dataset
 python tools/video_to_frames.py path/to/videos
 python main.py validate_labels path/to/dataset --num-classes 2
+python main.py normalize_manipal path/to/manipal -o path/to/out
+python main.py normalize_okutama "path/to/Okutama Action" -o path/to/out
 python main.py --list   # show all tool ids
 ```
+
+`normalize_labels` still works as an alias of `normalize_manipal`.
 
 See each script's module docstring for exact usage and keyboard controls.
 
