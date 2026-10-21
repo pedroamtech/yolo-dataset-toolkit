@@ -243,18 +243,17 @@ def _subplot_distribution(
     _vline(ax_main, median_v, "Median", _C["median"], 0.70, ls=":")
     _vline(ax_main, p90_v,    "p90",    _C["p90"],    0.56, ls=(0, (3, 1, 1, 1)))
 
-    # ── Shape-metrics box ──────────────────────────────────────────────────────
+    # ── Shape metrics ──────────────────────────────────────────────────────────
+    # One line between the title and the plot, so it never covers the legend,
+    # the data or the mean/median/p90 labels.
     long_tail_verdict = "Yes" if skew_v > 1 else "No"
     txt = (
-        f"Skewness   = {skew_v:.2f}\n"
-        f"Kurtosis   = {kurt_v:.2f}\n"
-        f"Long tail  : {long_tail_verdict}\n"
-        f"N = {len(data):,}"
+        f"Skewness = {skew_v:.2f}   ·   Kurtosis = {kurt_v:.2f}   ·   "
+        f"Long tail: {long_tail_verdict}   ·   N = {len(data):,}"
     )
     ax_main.text(
-        0.97, 0.97, txt, transform=ax_main.transAxes,
-        fontsize=8.5, va="top", ha="right", family="monospace",
-        bbox=dict(boxstyle="round,pad=0.4", fc="white", alpha=0.88, ec="#AAAAAA"),
+        0.5, 1.015, txt, transform=ax_main.transAxes,
+        fontsize=8.5, va="bottom", ha="center", color="#444444",
     )
 
     # Log X scale when the tail is very long (max/median > 15)
@@ -266,7 +265,7 @@ def _subplot_distribution(
         ax_main.set_xlabel(xlabel, fontsize=10)
 
     ax_main.set_ylabel("Probability density", fontsize=10)
-    ax_main.set_title(title, fontsize=12, fontweight="bold", pad=10)
+    ax_main.set_title(title, fontsize=12, fontweight="bold", pad=22)
     ax_main.legend(fontsize=8, loc="upper right", framealpha=0.9, edgecolor="#CCCCCC")
     ax_main.grid(True, alpha=0.35, ls="--")
     ax_main.spines[["top", "right"]].set_visible(False)
@@ -314,7 +313,7 @@ def plot_size_distributions(
     gs = gridspec.GridSpec(
         2, 2, figure=fig,
         hspace=0.45, wspace=0.32,
-        left=0.07, right=0.97, top=0.90, bottom=0.07,
+        left=0.07, right=0.97, top=0.88, bottom=0.07,
     )
 
     _subplot_distribution(

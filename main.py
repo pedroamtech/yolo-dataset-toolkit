@@ -14,6 +14,7 @@ Examples:
     python main.py clean_dataset path/to/dataset --delete
     python main.py validate_labels path/to/dataset --num-classes 2
     python main.py analyze_size_distribution --save
+    python main.py analyze_size_distribution_v2 --labels L --images I --save
 """
 
 import subprocess
@@ -124,6 +125,15 @@ TOOLS = [
         "title": "Analyze object sizes — AS/RS size distribution, log-normal fit, CCDF",
         "script": "analyze_size_distribution.py",
         "kind": "labels_images",
+    },
+    {
+        "id": "analyze_size_distribution_v2",
+        "aliases": ["size_bins"],
+        "title": "Analyze object sizes v2 — v1 + long-tail size bins and balance plan "
+                 "(persons/deficit per AS bin)",
+        "script": "analyze_size_distribution_v2.py",
+        "kind": "labels_images",
+        "ask_bins": True,
     },
 ]
 
@@ -244,9 +254,26 @@ def interactive_run(tool: dict) -> int:
         if labels:
             images = prompt_path("Corresponding images folder", allow_empty=False)
             if not images:
-                print("[ERROR] analyze_size_distribution needs --images together with --labels.")
+                print(f"[ERROR] {tool['id']} needs --images together with --labels.")
                 return 1
             args += ["--labels", labels, "--images", images]
+
+        if tool.get("ask_bins"):
+            bins = input("Explicit AS bin edges in px, e.g. '25,40,60' "
+                         "[Enter = automatic bins]: ").strip()
+            if bins:
+                args += ["--bins", bins]
+            else:
+                pct = input("Long-tail start percentile [75]: ").strip()
+                if pct:
+                    args += ["--tail-percentile", pct]
+                ratio = input("Bin growth ratio [1.5]: ").strip()
+                if ratio:
+                    args += ["--bin-ratio", ratio]
+            level = input("Balance level [Enter = dominant tail bin, or an integer]: ").strip()
+            if level:
+                args += ["--balance-level", level]
+
         ans = input("Save the figure as PNG? [y/N]: ").strip().lower()
         if ans in ("y", "yes"):
             args.append("--save")

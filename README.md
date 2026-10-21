@@ -19,6 +19,7 @@ internal `tools/` folder.
 | `tools/normalize_okutama.py` | Okutama-Action dataset: converts its 4K VATIC annotations into a clean single-class (person) YOLO `train/` + `test/` dataset, rebuilding interpolated boxes with camera-motion compensation so they stay on the person during fast drone turns. |
 | `tools/yolo_person_labeler.py` | All-in-one labeling/editing/viewing tool — HOG auto-detection, manual box drawing, zoom/pan, click-to-select-and-delete, per-class color rendering. |
 | `tools/analyze_size_distribution.py` | Object size distribution analysis (Absolute/Relative Size, log-normal fit, CCDF heavy-tail diagnostic) following the TinyPerson Benchmark methodology (Yu et al., 2019). Runs on synthetic data if no `--labels`/`--images` are given. |
+| `tools/analyze_size_distribution_v2.py` | v1 plus long-tail size bins (tail start at an AS percentile, geometric bins) and a balance plan: persons and deficit per bin, bar chart, JSON export. |
 | `tools/rename_images.py` | Batch-renames files in a folder with a fixed prefix (images by default; `--ext` for other extensions, `--all-files` for everything). `--labels DIR` gives the matching `.txt` labels the same prefix. |
 | `tools/standardize_frame_numbers.py` | Zero-pads the trailing `_<number>` (the digits after the last underscore) in each filename to 6 digits, e.g. `clip_40.jpg` → `clip_000040.jpg`, `cam1_20230101_300.jpg` → `cam1_20230101_000300.jpg`. Numbers already ≥ 6 digits are never truncated. Optionally renames matching `labels/*.txt` in lockstep; `--dry-run` previews. |
 | `tools/video_to_frames.py` | Extracts every frame from all videos in a folder into per-video subfolders. |
@@ -188,6 +189,26 @@ output; `--images` is required whenever `--labels` is given (needed for `RS`).
 ```bash
 python tools/analyze_size_distribution.py                              # synthetic demo
 python tools/analyze_size_distribution.py --labels L --images I --save
+```
+
+#### `analyze_size_distribution_v2.py` — size statistics + long-tail balance plan
+
+Everything in v1, plus the dataset-driven size bins of the Aerial Person Aug
+pipeline (`size_bins.py`), without its `config` module. The long tail starts at
+the `--tail-percentile` of AS (default 75); from there bins grow geometrically by
+`--bin-ratio` (default 1.5) up to the largest person, and the last bin is
+open-ended (`--bins 25,40,60` sets the edges explicitly). Every tail bin is
+raised to `--balance-level` (default: the count of the most populated tail bin,
+which receives nothing); persons below the tail start are never augmented. It
+prints persons/deficit per bin, draws the bin edges on the AS panel plus a
+per-bin bar chart, and `--save` also writes `balance_plan_<dataset>.json`
+(same keys as the pipeline's `balance_plan.json`). Unlike v1, sizes are not
+truncated to integer pixels, so counts match `size_bins.py` near the bin edges.
+
+```bash
+python tools/analyze_size_distribution_v2.py                              # synthetic demo
+python tools/analyze_size_distribution_v2.py --labels L --images I --save
+python tools/analyze_size_distribution_v2.py --labels L --images I --bins 25,40,60,90 --balance-level 5000
 ```
 
 #### `rename_images.py` — prepend a fixed prefix
